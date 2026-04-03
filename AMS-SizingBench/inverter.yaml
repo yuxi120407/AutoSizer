@@ -1,0 +1,205 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./inverter_test_folder/fom_test_new"
+
+
+user_specs:  "Primary goal: Maximize DC gain while minimizing average delay and dynamic power consumption."
+user_specs_metric: "fom > 1.0 AND dc_gain_db > 20 AND average_delay < 50 AND dynamic_power < 50"
+
+params:
+  L: 0.15
+  vdd_voltage: 1.8
+  sweep_start: 0
+  sweep_end: 1.8
+  sweep_step: 0.01
+  load_cap: 10e-15
+
+variable:
+  W_pmos_base: null
+  W_nmos_base: null
+
+
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+
+width_scales:
+  W_pmos:   [W_pmos_base, 20]
+  W_nmos:   [W_nmos_base, 20]
+
+
+subckt_name: SKY130_INV
+subckt_pins: 
+  - OUT
+  - IN
+  - VSS
+  - VDD
+
+I_O_pins:
+  - OUT
+  - IN
+  - VSS
+  - VDD
+
+testbench_signals:
+  OUT: OUT
+  IN: IN
+  VSS: VSS
+  VDD: VDD
+
+
+metrics:
+  - dc_gain_db
+  - average_delay
+  - dynamic_power
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".2f"
+    degradation_key: "power_percent"
+
+  delay_ps:
+    name: "Delay"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  average_delay:
+    scale: 1e12
+    decimals: 2
+    unit: "ps"
+
+  dynamic_power:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db / (average_delay * dynamic_power)"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+    .subckt SKY130_INV OUT IN VSS VDD
+    x1 OUT IN VDD VDD sky130_fd_pr__pfet_01v8 w={W_pmos} l={L}
+    x2 OUT IN VSS VSS sky130_fd_pr__nfet_01v8 w={W_nmos} l={L}
+    .ends SKY130_INV
+
+
+testbench_template: |
+    * Inverter Analysis from Extracted Netlist
+    .lib {pdk_lib_path} tt
+    .option scale=1e-6
+    .option warn=0
+    
+    {ota_subckt}
+    
+    * Main circuit for DC sweep
+    Vdd VDD 0 DC {vdd_voltage}
+    Vss VSS 0 DC 0
+    Vin IN 0 DC {sweep_start} PULSE(0 {vdd_voltage} 100p 100p 100p 1n 2n)
+    Xinv {inst_pins} {subckt_name}
+    Cout OUT 0 {load_cap}
+    
+    * DC Sweep Analysis for Gain
+    .dc Vin {sweep_start} {sweep_end} {sweep_step}
+    
+    .control
+    run
+    
+    * Calculate DC gain as maximum derivative dVout/dVin
+    let vout_deriv = deriv(v(OUT))
+    let gain_linear = abs(vout_deriv)
+    let gain_db = db(gain_linear)
+    meas dc dc_gain_db MAX gain_db
+
+    
+    print dc_gain_db 
+    
+    .endc
+    
+    * Transient Analysis for Power and Delay
+    .control
+    destroy all
+    reset
+    
+    tran 1p 4n
+    
+    * Calculate power
+    let power = v(VDD) * (-i(Vdd))
+    let avg_power_calc = mean(power)
+    
+    * Measure static current during stable low period (before first pulse)
+    meas tran static_current AVG i(Vdd) from=10p to=90p
+    let static_power_abs = abs(static_current) * {vdd_voltage}
+    
+    * Dynamic power
+    let dynamic_power = abs(avg_power_calc - static_power_abs)
+    
+    * Measure propagation delays at 50% threshold (0.9V)
+    * Rising edge (LOW to HIGH) - first crossing
+    meas tran t_in_50_rise WHEN v(IN)=0.9 CROSS=1
+    meas tran t_out_50_rise WHEN v(OUT)=0.9 CROSS=1
+    let tplh = t_out_50_rise - t_in_50_rise
+    
+    * Falling edge (HIGH to LOW) - second crossing
+    meas tran t_in_50_fall WHEN v(IN)=0.9 CROSS=2
+    meas tran t_out_50_fall WHEN v(OUT)=0.9 CROSS=2
+    let tphl = t_out_50_fall - t_in_50_fall
+    let average_delay = (tplh + tphl)/2
+    
+    print dynamic_power average_delay
+    
+    quit
+    .endc
+    
+    .end
+    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+

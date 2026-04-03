@@ -1,0 +1,166 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./nand_gate_results/fom_test_new"
+
+
+user_specs: "Primary goal: Minimize propagation delay and energy per transition while maintaining good noise margins for robust digital logic operation."
+
+user_specs_metric: "fom > 0.15 AND avg_delay_ps < 200 AND energy_per_transition_fj < 25 AND noise_margin_high > 0.3 AND noise_margin_low > 0.3"
+
+params:
+  vdd: 1.8
+  temp: 27
+  freq: 100e6      # 100 MHz
+  c_load: 10e-15   # 10 fF load capacitance
+
+variable:
+  W_pmos: null
+  W_nmos: null
+  L_pmos: null
+  L_nmos: null
+
+# Unified value ranges
+W_values: [0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
+L_values: [0.15, 0.18, 0.20, 0.25, 0.30]
+
+# Variable-specific ranges
+W_pmos_values: [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0]      # 7 values
+W_nmos_values: [0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]     # 7 values
+L_pmos_values: [0.15, 0.18, 0.20, 0.25, 0.30]            # 5 values
+L_nmos_values: [0.15, 0.18, 0.20, 0.25, 0.30]            # 5 values
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: NAND_GATE
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - tphl_ps
+  - tplh_ps
+  - avg_delay_ps
+  - power_total_uw
+  - energy_per_transition_fj
+  - noise_margin_high
+  - noise_margin_low
+  - fom
+
+base_metrics:
+  tphl_ps:
+    name: "Propagation Delay (H→L)"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "tphl_percent"
+  tplh_ps:
+    name: "Propagation Delay (L→H)"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "tplh_percent"
+  avg_delay_ps:
+    name: "Average Delay"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+  power_total_uw:
+    name: "Total Power"
+    unit: "µW"
+    format: ".3f"
+    degradation_key: "power_percent"
+  energy_per_transition_fj:
+    name: "Energy per Transition"
+    unit: "fJ"
+    format: ".3f"
+    degradation_key: "energy_percent"
+  noise_margin_high:
+    name: "Noise Margin High"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "nmh_percent"
+  noise_margin_low:
+    name: "Noise Margin Low"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "nml_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  tphl_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+  tplh_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+  avg_delay_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+  power_total_uw:
+    scale: 1
+    decimals: 3
+    unit: "µW"
+  energy_per_transition_fj:
+    scale: 1
+    decimals: 3
+    unit: "fJ"
+  noise_margin_high:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  noise_margin_low:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  fom:
+    # FOM = (NMH × NML) / (avg_delay_ps × energy_per_transition_fj)
+    # Maximize: Noise margins
+    # Minimize: Average delay and energy per transition
+    expr: "((noise_margin_high + noise_margin_low) / 2 / 0.5) / (max(energy_per_transition_fj, 0.001) / 100 * max(avg_delay_ps, 1) / 10000)"
+    scale: 1  # Scale up for readability
+    decimals: 4
+    unit: ""
+
+circuit_type: "nand_gate"
+
+ota_subckt_template: |
+  * 2-Input NAND Gate
+  * Y = NOT(A AND B)
+  * PMOS pull-up (parallel)
+  XMP1 Y A VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMP2 Y B VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  
+  * NMOS pull-down (series)
+  XMN1 Y A N1 GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  XMN2 N1 B GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Load
+  CL Y GND {c_load}
+  
+  * Supply
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * NAND Gate Testbench
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  set noaskquit
+  op
+  quit
+  .endc
+  
+  .end

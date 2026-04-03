@@ -1,0 +1,280 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./folded_cascode_ota_hp/fom_test_new"
+
+
+user_specs: "Design a high-pass filter maximizing stopband attenuation, cutoff frequency, and rolloff steepness."
+
+user_specs_metric: "fom > 0.5 AND hpf_stopband_atten_db > 20 AND hpf_cutoff_hz > 10 AND hpf_passband_gain_db > -15"
+
+
+params:
+  L: 0.15
+  vdd: 1.8
+  vbn: 0.7
+  vbp: 1.0
+  vcm: 0.9
+  cload: 1e-12
+  itail: 10e-6
+
+  
+
+
+variable:
+  W_in_base: null
+  W_fold_base: null
+  W_sink_base: null
+  W_mirr_base: null
+  W_casc_n_base: null
+  W_casc_p_base: null
+  R1: null
+  R2: null
+  C1: null
+  C2: null
+  
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+width_scales:
+  W_in:   [W_in_base, 4]
+  W_fold:   [W_fold_base, 4]
+  W_sink: [W_sink_base, 20]
+  W_mirr:    [W_mirr_base, 20]
+  W_casc_n:   [W_casc_n_base, 20]
+  W_casc_p:   [W_casc_p_base, 20]
+
+# Direct R1 values (Ω)
+R1_values: [500, 700, 840, 1000, 1260, 1500, 2000, 3000, 5000, 10000]
+
+# Direct R2 values (Ω)
+R2_values: [500, 700, 840, 1000, 1260, 1500, 2000, 3000, 5000, 10000]
+
+# Direct C1 values (F)
+C1_values: [7.96e-12, 11.14e-12, 13.37e-12, 15.92e-12, 20.06e-12, 
+            23.88e-12, 31.84e-12, 47.76e-12, 79.60e-12, 159.20e-12]
+
+# Direct C2 values (F)
+C2_values: [7.96e-12, 11.14e-12, 13.37e-12, 15.92e-12, 20.06e-12, 
+            23.88e-12, 31.84e-12, 47.76e-12, 79.60e-12, 159.20e-12]
+            
+subckt_name: FOLDED_CASCODE_OTA
+subckt_pins: 
+  - VSS_NODE
+  - VDD_NODE
+  - VOUT_NODE
+  - VINN_NODE
+  - VINP_NODE
+  - VBN_NODE
+  - VBP_NODE
+  - VTAIL_NODE
+
+I_O_pins:
+  - VSS_NODE
+  - VDD_NODE
+  - VOUT_NODE
+  - VINN_NODE
+  - VINP_NODE
+  - VBN_NODE
+  - VBP_NODE
+  - VTAIL_NODE
+
+testbench_signals:
+  VSS_NODE: VSS_NODE
+  VDD_NODE: VDD_NODE
+  VOUT_NODE: VOUT_NODE
+  VINN_NODE: VINN_NODE
+  VINP_NODE: VINP_NODE
+  VBN_NODE: VBN_NODE
+  VBP_NODE: VBP_NODE
+  VTAIL_NODE: VTAIL_NODE
+
+metrics:
+  - hpf_cutoff_hz
+  - hpf_passband_gain_db
+  - hpf_rolloff_db_per_dec
+  - hpf_stopband_atten_db
+  - hpf_q_theoretical
+  - fom
+
+base_metrics:
+  hpf_cutoff_hz:
+    name: "Cutoff Frequency"
+    unit: "MHz"
+    format: ".2f"
+    degradation_key: "cutoff_percent"
+
+  hpf_passband_gain_db:
+    name: "Passband Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  hpf_rolloff_db_per_dec:
+    name: "Rolloff"
+    unit: "dB/dec"
+    format: ".1f"
+    degradation_key: "rolloff_percent"
+
+  hpf_stopband_atten_db:
+    name: "Stopband Attenuation"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "stopband_percent"
+
+  hpf_q_theoretical:
+    name: "Quality Factor"
+    unit: ""
+    format: ".2f"
+    degradation_key: "q_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  hpf_cutoff_hz:
+    scale: 1e-6
+    decimals: 3
+    unit: "MHz"
+
+  hpf_passband_gain_db:
+    scale: 1
+    decimals: 1
+    unit: "dB"
+
+  hpf_rolloff_db_per_dec:
+    scale: 1
+    decimals: 1
+    unit: "dB/dec"
+
+  hpf_stopband_atten_db:
+    scale: 1
+    decimals: 1
+    unit: "dB"
+
+  hpf_q_theoretical:
+    scale: 1
+    decimals: 2
+    unit: ""
+
+  fom:
+    # expr auto-generated from user_specs_metric
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+circuit_type: "fold_cascode_ota_hp"
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+    f""".subckt FOLDED_CASCODE_OTA VSS VDD VOUT VINN VINP VBN VBP VTAIL 
+    * PMOS differential input pair
+    XM1 N1 VINP VTAIL VDD sky130_fd_pr__pfet_01v8 w={W_in} l={L}
+    XM2 N2 VINN VTAIL VDD sky130_fd_pr__pfet_01v8 w={W_in} l={L}
+    
+    * NMOS folding devices
+    XM3 N1 VBN NC1 VSS sky130_fd_pr__nfet_01v8 w={W_fold} l={L}
+    XM4 N2 VBN NC2 VSS sky130_fd_pr__nfet_01v8 w={W_fold} l={L}
+    
+    * NMOS cascode (bottom)
+    XM5 NC1 VBN VSS VSS sky130_fd_pr__nfet_01v8 w={W_casc_n} l={L}
+    XM6 NC2 VBN VSS VSS sky130_fd_pr__nfet_01v8 w={W_casc_n} l={L}
+    
+    * PMOS current mirror loads
+    XM7 N1 N1 NP1 VDD sky130_fd_pr__pfet_01v8 w={W_sink} l={L}
+    XM8 N2 N1 NP2 VDD sky130_fd_pr__pfet_01v8 w={W_sink} l={L}
+    
+    * PMOS cascode (top)
+    XM9  NP1 VBP VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirr} l={L}
+    XM10 NP2 VBP VDD VDD sky130_fd_pr__pfet_01v8 w={W_casc_p} l={L}
+    
+    * Output connection
+    ROUT N2 VOTA_OUT 0.01
+    
+    * Sallen-Key HIGH-PASS Filter (C and R swapped from LPF)
+    C1 VOTA_OUT VNODE1 {C1}
+    C2 VNODE1 VBUF_IN {C2}
+    R2 VBUF_IN VSS {R2}
+    R1 VNODE1 VOUT {R1}
+    
+    * Unity-gain buffer
+    EBUFFER VOUT VSS VBUF_IN VSS 1.0
+    RBUF_OUT VOUT VFINAL_OUT 0.01
+    
+    * Output load
+    CLOAD VFINAL_OUT VSS {cload}
+    .ends FOLDED_CASCODE_OTA"""
+
+# INLINED subckt here; no {ota_subckt} placeholder needed
+testbench_template: |
+    * Folded-Cascode OTA testbench
+    .lib {pdk_lib_path} tt
+    .options GMIN=1e-10 RELTOL=1e-4 ABSTOL=1e-12
+    
+    {ota_subckt}
+    
+    * Rails - Use voltage sources to measure current
+    VVDD  VDD_NODE   0   DC {vdd}
+    VVSS  VSS_NODE   0   DC 0
+    
+    * Bias voltages
+    VBN   VBN_NODE   0   DC {vbn}
+    VBP   VBP_NODE   0   DC {vbp}
+    
+    * Differential inputs
+    VINP  VINP_NODE  0   DC {vcm} AC 0.5
+    VINN  VINN_NODE  0   DC {vcm} AC -0.5
+    
+    * Tail current - Use 0V voltage source to measure current
+    VTAIL VDD_NODE VTAIL_NODE DC 0
+    ITAIL_SRC VTAIL_NODE 0 DC {itail}
+    
+    * DUT and load
+    XOTA  VSS_NODE VDD_NODE VOUT_NODE VINN_NODE VINP_NODE VBN_NODE VBP_NODE VTAIL_NODE {subckt_name}
+    CLOAD VOUT_NODE VSS_NODE {cload}
+    
+    .op
+    .ac dec 200 1 10G
+    
+    * Measurements
+    .measure ac dc_gain_db max vdb(VOUT_NODE)
+    .measure ac ugbw when vdb(VOUT_NODE)=0 fall=1
+    
+    .control
+    set noaskquit
+    op
+    ac dec 200 1 10G
+    
+    * Power measurement
+    let power_dc = abs(i(VVDD)[0]) * {vdd} * 100
+    print power_dc
+    
+    * AC gain
+    let vout_ac = ac1.v(VOUT_NODE)
+    let gain_linear = mag(vout_ac[0])
+    let gain_db = 20*log(gain_linear)/log(10)
+    print gain_db
+    
+    * UGBW
+    let vout_mag = mag(vout_ac)
+    let freq_vec = frequency
+    let gain_db_vec = 20*log(vout_mag)/log(10)
+    
+    let idx = 0
+    let ugbw_hz = 0
+    while idx < length(gain_db_vec) - 1
+      if (gain_db_vec[idx] > 0) & (gain_db_vec[idx+1] < 0)
+        let ugbw_hz = freq_vec[idx]
+        print ugbw_hz
+        break
+      end
+      let idx = idx + 1
+    end
+    
+    quit
+    .endc
+    .end
+

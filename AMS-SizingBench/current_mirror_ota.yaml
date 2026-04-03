@@ -1,0 +1,173 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./current_mirror_test_folder/fom_test_new"
+
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a current-mirror OTA with 1pF load."
+user_specs_metric: "fom > 0.35 AND dc_gain_db > 15 AND ugbw > 10 AND power_dc < 65"
+
+params:
+  L: 0.15
+  vdd: 1.8
+  vcm: 0.9
+  cload: 1e-12
+  ibias: 20e-6
+
+variable:
+  W_tail_base: null
+  W_diff_base: null
+  W_mirror_base: null
+  W_casc_base: null
+
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+width_scales:
+  W_tail:   [W_tail_base, 4]
+  W_diff:   [W_diff_base, 8]
+  W_mirror: [W_mirror_base, 6]
+  W_out:    [W_mirror_base, 12]
+  W_casc:   [W_casc_base, 16]
+
+subckt_name: CURRENT_MIRROR_OTA
+subckt_pins:
+  - VSS
+  - VDD
+  - VOUT
+  - VINN
+  - VINP
+  - ID
+
+I_O_pins:
+  - VSS
+  - VDD
+  - VOUT
+  - VINN
+  - VINP
+  - ID
+
+testbench_signals:
+  VSS: VSS
+  VDD: VDD
+  VOUT: VOUT
+  VINN: VINN
+  VINP: VINP
+  ID: ID
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-6
+    decimals: 2
+    unit: "MHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+  .subckt CURRENT_MIRROR_OTA VSS VDD VOUT VINN VINP ID
+  XM5 ID ID VSS VSS sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+  XM4 SOURCE ID VSS VSS sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+  XM3 NET7 VINN SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
+  XM0 NET8 VINP SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
+  XM2 NET7 NET7 VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirror} l={L}
+  XM1 NET8 NET8 VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirror} l={L}
+  XM6 VOUT NET7 VDD VDD sky130_fd_pr__pfet_01v8 w={W_out} l={L}
+  XM7 NET9 NET8 VDD VDD sky130_fd_pr__pfet_01v8 w={W_out} l={L}
+  XM8 NET9 NET9 SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+  XM9 VOUT NET9 SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+  .ends CURRENT_MIRROR_OTA
+
+# INLINED subckt here; no {ota_subckt} placeholder needed
+testbench_template: |
+  * OTA testbench
+    .lib {pdk_lib_path} tt
+    
+    {ota_subckt}
+    
+    VDD VDD 0 DC {vdd}
+    VSS VSS 0 DC 0
+    IBIAS VDD ID DC {ibias}
+    VINP VINP 0 DC {vcm} AC 0.5
+    VINN VINN 0 DC {vcm} AC -0.5
+    XOTA {inst_pins} {subckt_name}
+    CLOAD VOUT 0 {cload}
+    
+    .op
+    
+    .control
+    op
+    let vdd_current = abs(i(VDD))
+    let power_dc = vdd_current * {vdd}
+    print power_dc
+    
+    ac dec 100 1 10g
+    let vout_ac = v(VOUT)
+    let gain_db = db(vout_ac)
+    let dc_gain_db = gain_db[0]
+    print dc_gain_db
+    
+    if dc_gain_db > 0
+        meas ac ugbw WHEN gain_db=0 CROSS=1
+    end
+    
+    quit
+    .endc
+    
+    .end
+

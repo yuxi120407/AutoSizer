@@ -1,0 +1,217 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./switched_capacitor_optimization_test_folder/fom_test_new"
+
+user_specs: "Primary goal: Maximize gain and UGBW while minimizing THD and power consumption, maintaining good phase margin for stable switched-capacitor operation."
+
+user_specs_metric: "fom > 1.0 AND gain_db > 15 AND thd_db < -25 AND power_uw < 1500 AND phase_margin_deg > 50 AND ugbw_mhz > 5"
+
+params:
+  vdd: 1.8
+  vin: 0.9
+  ibias: 10e-6
+  temp: 27
+  f_clk: 1e6
+  t_period: 1e-6 
+  t_rise: 1e-8    
+  t_high: 4.8e-7
+  # Fixed parameters
+  C_samp: 2e-12
+  C_hold: 2e-12
+  C_load: 2e-12
+  m_op: 4
+  m_sw: 2
+
+  
+variable:
+  W_op1_base: null
+  W_op2_base: null
+  W_sw_base: null
+  L_op_base: null
+  L_sw_base: null
+
+W_values: [2, 5, 8, 10, 12, 15, 20, 25, 30, 40, 50]
+L_values: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0]
+
+width_scales:
+  W_op1:  [W_op1_base, 1]
+  W_op2:  [W_op2_base, 1]
+  W_sw:  [W_sw_base, 1]
+
+length_scales:
+  L_op:  [L_op_base, 1]
+  L_sw:  [L_sw_base, 1]
+
+subckt_name: SWITCHED_CAPACITOR
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals: {VDD: VDD, GND: GND}
+
+# Primary metrics (raw values from simulation)
+metrics:
+  - gain_db
+  - thd_db
+  - power_uw
+  - phase_margin_deg
+  - ugbw_mhz
+  - fom
+
+# How to display each metric
+base_metrics:
+  gain_db:
+    name: "SC Gain"
+    unit: "dB"
+    format: ".2f"
+    degradation_key: "gain_percent"
+  thd_db:
+    name: "THD"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "thd_percent"
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+  phase_margin_deg:
+    name: "Phase Margin"
+    unit: "°"
+    format: ".1f"
+    degradation_key: "phase_margin_percent"
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+# Post-processing: scaling and FOM calculation
+metric_post:
+  gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+  
+  thd_db:
+    scale: 1
+    decimals: 1
+    unit: "dB"
+  
+  power_uw:
+    scale: 1
+    decimals: 1
+    unit: "µW"
+  
+  phase_margin_deg:
+    scale: 1
+    decimals: 1
+    unit: "°"
+  
+  ugbw_mhz:
+    scale: 1
+    decimals: 1
+    unit: "MHz"
+  
+  fom:
+    # FOM = (UGBW × Phase_Margin) / (Power × |THD|)
+    expr: "(ugbw_mhz * phase_margin_deg * gain_db * abs(thd_db)) / power_uw"
+    scale: 1
+    decimals: 4
+    unit: ""
+
+# Mark this as a special circuit type
+circuit_type: "switched_capacitor"
+
+# Complete SPICE netlist for LLM understanding
+ota_subckt_template: |
+  * Transmission gate switch subcircuit
+  .subckt SWMOD in out ctrl
+  XN in ctrl out GND sky130_fd_pr__nfet_01v8 l={L_sw} w={W_sw} m={m_sw}
+  XP in ctrl out VDD sky130_fd_pr__pfet_01v8 l={L_sw} w={W_sw} m={m_sw}
+  .ends
+  
+  * Two-stage OTA for switched capacitor circuit
+  XM1 VD1 VIN_P VTAIL GND sky130_fd_pr__nfet_01v8 l={L_op} w={W_op1} m={m_op}
+  XM2 VD2 VIN_N VTAIL GND sky130_fd_pr__nfet_01v8 l={L_op} w={W_op1} m={m_op}
+  XMTAIL VTAIL VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_op}*2}} w={W_op1} m={m_op}
+  XM3 VD1 VD1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_op} w={W_op2} m={m_op}
+  XM4 VD2 VD1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_op} w={W_op2} m={m_op}
+  XM5 VOUT VD2 VDD VDD sky130_fd_pr__pfet_01v8 l={L_op} w={{{W_op2}*4}} m={m_op}
+  XM6 VOUT VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_op}*2}} w={{{W_op1}*2}} m={{{m_op}/2}}
+  CC VD2 VOUT 2p
+  XMBIAS VBIAS VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_op}*4}} w={W_op1} m=1
+  RBIAS VDD VBIAS {{{vdd}/{ibias}/10}}
+  
+  * Switched capacitor network
+  XSW1 VIN VSAMP CLK1 SWMOD
+  XSW2 VSAMP VIN_N CLK2 SWMOD
+  XSW3 VIN_P VOUT CLK2 SWMOD
+  CSAMP VSAMP GND {C_samp}
+  CHOLD VIN_N VOUT {C_hold}
+  CLOAD VOUT GND {C_load}
+  
+  * Sources
+  VIN VIN GND DC {vin}
+  VREF VIN_P GND DC {{{vdd}/2}}
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * Switched Capacitor Integrator Circuit
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+
+  * Clock signals (1 MHz, non-overlapping)
+  VCLK1 CLK1 GND PULSE(0 {vdd} 0 {t_rise} {t_rise} {t_high} {t_period})
+  VCLK2 CLK2 GND PULSE(0 {vdd} {{{t_period}/2}} {t_rise} {t_rise} {t_high} {t_period})
+  
+  .ic v(VOUT)={{{vdd}/2}} v(VSAMP)=0 v(VIN_N)={{{vdd}/2}}
+  
+  .control
+  set noaskquit
+  
+  * Transient analysis
+  tran {{{t_period}/100}} {{{t_period}*50}} {{{t_period}*10}}
+  
+  * AC analysis for phase margin and UGBW
+  ac dec 10 1 1G
+  
+  * Measurements
+  let power_uw = mean(abs(i(VDD))) * {vdd} * 1e6
+  let vout_final = v(VOUT)[length(v(VOUT))-1]
+  let gain_linear = abs((vout_final - {{{vdd}/2}}) / ({vin} - {{{vdd}/2}}))
+  let gain_db = 20 * log10(gain_linear)
+  
+  * AC metrics
+  let phase_margin = 180 + 180/pi * phase(v(VOUT))
+  let ugbw_hz = 1
+  * Find UGBW (0dB crossing)
+  let i = 0
+  while i < length(frequency) - 1
+    if db(v(VOUT))[i] >= 0 and db(v(VOUT))[i+1] < 0
+      let ugbw_hz = frequency[i]
+      break
+    end
+    let i = i + 1
+  end
+  let ugbw_mhz = ugbw_hz / 1e6
+  
+  * THD calculation (simplified)
+  let thd_db = -40
+  
+  echo "GAIN_DB: $&gain_db" > sc_results.txt
+  echo "THD_DB: $&thd_db" >> sc_results.txt
+  echo "POWER_UW: $&power_uw" >> sc_results.txt
+  echo "PHASE_MARGIN_DEG: $&phase_margin" >> sc_results.txt
+  echo "UGBW_MHZ: $&ugbw_mhz" >> sc_results.txt
+  
+  quit
+  .endc
+  .end

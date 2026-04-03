@@ -1,0 +1,230 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./telescopic_ota_test_folder/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a telescopic OTA with 1pF load."
+user_specs_metric: "fom > 0.08 AND dc_gain_db > 18 AND ugbw > 3.0 AND power_dc < 65"
+
+params:
+  L: 0.15
+  vdd: 1.8
+  vcm: 0.7
+  cload: 1e-12
+  ibias: 10e-6
+  vbiasp1: 1.15
+  #W_diff: 0.84 
+  
+variable:
+  W_tail_base: null
+  W_diff_base: null
+  W_casc_base: null
+  W_load_base: null
+
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+width_scales:
+  W_tail:   [W_tail_base, 2]
+  W_diff:   [W_diff_base, 4]
+  W_casc:   [W_casc_base, 2]
+  W_load:   [W_load_base, 2]
+
+subckt_name: TELESCOPIC_OTA
+subckt_pins:
+  - VBIASN 
+  - VBIASNC
+  - VBIASP1 
+  - VBIASP2 
+  - VINN 
+  - VINP 
+  - VOUTN 
+  - VOUTP 
+  - VDD 
+  - "0"
+
+
+I_O_pins:
+  - VBIASN
+  - VBIASNC
+  - VBIASP1 
+  - VBIASP2 
+  - VINN 
+  - VINP 
+  - VOUTN 
+  - VOUTP 
+  - VDD 
+  - "0"
+
+
+testbench_signals:
+    VBIASN: VBIASN
+    VBIASNC: VBIASNC
+    VBIASP1: VBIASP1 
+    VBIASP2: VBIASP2 
+    VINN: VINN 
+    VINP: VINP 
+    VOUTN: VOUTN 
+    VOUTP: VOUTP 
+    VDD: VDD 
+    "0": "0"
+
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-6
+    decimals: 2
+    unit: "MHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+    .subckt TELESCOPIC_OTA VBIASN VBIASNC VBIASP1 VBIASP2 VINN VINP VOUTN VOUTP VDD 0
+    * Tail current sources
+    xm1 ID   VBIASN  0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+    xm2 NET10 VBIASN 0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+    
+    * Differential pair
+    xm3 NET8   VINP NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
+    xm4 NET014 VINN NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
+    
+    * NMOS cascode  (use VBIASNC here)
+    xm5 VOUTN VBIASNC NET8   0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L} 
+    xm6 VOUTP VBIASNC NET014 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+    
+    * PMOS cascode
+    xm7 VOUTN VBIASP1 NET06 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L}
+    xm8 VOUTP VBIASP1 NET012 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L}
+    
+    * PMOS current source
+    xm9  NET06 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
+    xm10 NET012 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
+    .ends TELESCOPIC_OTA
+
+
+
+testbench_template: |
+  * Telescopic OTA Simulation
+    .lib {pdk_lib_path} tt
+
+    
+    {ota_subckt}
+    
+    * Power supply
+    VDD VDD 0 DC {vdd}
+    
+    * Bias Generation
+    IBIAS_N VDD VBIASN DC {ibias}
+    XMN_BIAS VBIASN VBIASN 0 0 sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+    
+    IBIAS_P VBIASP2 0 DC {ibias}
+    XMP_BIAS VBIASP2 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
+    
+    VBIASP1 VBIASP1 0 DC={vbiasp1}
+    
+    * NEW: NMOS cascode bias (a bit higher than VBIASN)
+    IBIAS_NC VDD VBIASNC DC {ibias}
+    XMN_BIASC VBIASNC VBIASNC 0 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+    
+    * Differential inputs
+    VINP VINP 0 DC {vcm} AC 0.5
+    VINN VINN 0 DC {vcm} AC -0.5
+    
+    * OTA instance
+    XOTA {inst_pins} {subckt_name}
+    
+    * Load capacitors
+    CLOADP VOUTP 0 {cload}
+    CLOADN VOUTN 0 {cload}
+    
+    .op
+    
+    .control
+    op
+    
+    * Power
+    let vdd_current = abs(i(VDD))
+    let power_dc = vdd_current * {vdd}
+    echo "=== POWER ==="
+    print vdd_current power_dc
+    
+    * AC analysis
+    ac dec 100 1 10g
+    
+    let vout_diff = v(VOUTP) - v(VOUTN)
+    let gain_db = db(vout_diff)
+    
+    let dc_gain_db = gain_db[0]
+    
+    echo "=== DC GAIN ==="
+    print dc_gain_db
+    
+    * UGBW
+    if dc_gain_db > 0
+        meas ac ugbw WHEN gain_db=0 CROSS=1
+    end
+    
+    quit
+    .endc
+    .end
+
+
+
+
+

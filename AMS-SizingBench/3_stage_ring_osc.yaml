@@ -1,0 +1,154 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./3_stage_ring_osc_results/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize oscillation frequency while minimizing power consumption for clock generation and timing applications."
+
+user_specs_metric: "fom > 90 AND frequency_mhz > 400 AND power_uw < 250 AND delay_per_stage_ps < 500"
+
+params:
+  vdd: 1.8
+  temp: 27
+  c_load: 10e-15   # 10 fF load capacitance
+
+variable:
+  L_inv: null
+  W_pmos0: null
+  W_nmos0: null
+  W_pmos1: null
+  W_nmos1: null
+  W_pmos2: null
+  W_nmos2: null
+
+# Unified value ranges
+L_values: [0.15, 0.18, 0.20, 0.25, 0.30]  # 5 values
+W_values: [0.5, 1.0, 2.0, 4.0, 8.0]       # 5 values
+
+# Variable-specific ranges
+L_inv_values: [0.15, 0.18, 0.20, 0.30]       # 4 values
+W_pmos0_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+W_nmos0_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+W_pmos1_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+W_nmos1_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+W_pmos2_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+W_nmos2_values: [0.5, 1.0, 2.0, 4.0, 8.0]    # 5 values
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: RING_OSC_3STAGE
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - frequency_mhz
+  - power_uw
+  - delay_per_stage_ps
+  - fom
+
+base_metrics:
+  frequency_mhz:
+    name: "Oscillation Frequency"
+    unit: "MHz"
+    format: ".2f"
+    degradation_key: "frequency_percent"
+  power_uw:
+    name: "Power Consumption"
+    unit: "µW"
+    format: ".3f"
+    degradation_key: "power_percent"
+  delay_per_stage_ps:
+    name: "Delay per Stage"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  frequency_mhz:
+    scale: 1
+    decimals: 2
+    unit: "MHz"
+  power_uw:
+    scale: 1
+    decimals: 3
+    unit: "µW"
+  delay_per_stage_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+  fom:
+    # FOM = Frequency / Power
+    # Maximize: Frequency (speed)
+    # Minimize: Power
+    expr: "frequency_mhz / max(power_uw, 0.1)"
+    scale: 1
+    decimals: 4
+    unit: ""
+
+circuit_type: "ring_oscillator"
+
+ota_subckt_template: |
+  * 3-Stage Ring Oscillator
+  * Stage 0: N0 → N1
+    XMP0 N1 N0 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos0}
+    XMN0 N1 N0 GND GND sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos0}
+    
+    * Stage 1: N1 → N2
+    XMP1 N2 N1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos1}
+    XMN1 N2 N1 GND GND sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos1}
+    
+    * Stage 2: N2 → N0 (closes the ring)
+    XMP2 N0 N2 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos2}
+    XMN2 N0 N2 GND GND sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos2}
+  
+  * Load capacitor
+  CL N0 GND {c_load}
+  
+  * Supply
+  VDD VDD GND DC {vdd}
+  
+  * Initial condition
+  .ic v(N0)={vdd}
+
+testbench_template: |
+    .control
+    set noaskquit
+    set wr_singlescale
+    set wr_vecnames
+    option numdgt=7
+    
+    * Transient to observe oscillation
+    tran 1p 50n
+    
+    * Measure oscillation frequency
+    meas tran v_first WHEN v(N0)={vdd/2} RISE=1
+    meas tran v_second WHEN v(N0)={vdd/2} RISE=2
+    let period = v_second - v_first
+    
+    echo "PERIOD:" > {results_file}
+    print period >> {results_file}
+    
+    * Measure average power
+    let i_avg = mean(-i(VDD))
+    
+    echo "I_AVG:" >> {results_file}
+    print i_avg >> {results_file}
+    
+    * Save waveform for verification
+    wrdata {results_file}_waveform.txt time v(N0) v(N1) v(N2)
+    
+    quit
+    .endc
+    
+    .end
+    ""

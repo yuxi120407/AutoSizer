@@ -1,0 +1,204 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./nmcnr_amplifier/optimization_results"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a Nested Miller Compensation with Nulling Resistor amplifier."
+user_specs_metric: "dc_gain_db > 18 AND ugbw > 10 AND power_dc < 600"
+
+params:
+  vdd: 1.8
+  vcm: 0.9
+  cload: 15e-9
+  rload: 25e3
+  CM1: 5.5e-12
+  CM2: 4.8e-12
+  RM: 9.4e3
+  IBIAS: 19e-6
+
+
+variable:
+
+  L: null
+  W_BIAS_P: null
+  W_BIAS_N: null
+  W_GM1: null
+  W_GM2: null
+  W_GM3: null
+  W_LOAD2: null
+
+
+# Variable ranges
+
+L_values: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
+
+W_BIAS_P_values: [5.0, 7.0, 9.0, 11.0]
+W_BIAS_N_values: [3.0, 4.0, 5.0, 6.0]
+W_GM1_values: [6.0, 9.0, 12.0, 15.0]
+W_GM2_values: [4.0, 5.0, 7.0, 9.0]
+W_GM3_values: [3.0, 4.0, 5.0, 6.0]
+W_LOAD2_values: [2.0, 3.0, 4.0, 5.0]
+
+subckt_name: NMCNR
+subckt_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+I_O_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+testbench_signals:
+  GNDA: VSS
+  VDDA: VDD
+  VINN: VINN
+  VINP: VINP
+  VOUT: VOUT
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-3
+    decimals: 2
+    unit: "kHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+ota_subckt_template: |
+  .subckt NMCNR GNDA VDDA VINN VINP VOUT
+  * PMOS BIAS CURRENT MIRROR
+  xm0 VBIAS VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm1 VB4 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm2 DM_1 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm3 VB3 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm4 TAIL VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=28
+  xm5 VOUTN VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm6 V1OUT VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm7 V2OUT VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=7
+  xm11 VOUT VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=70
+  
+  * FIRST STAGE - PMOS Differential Pair with NMOS Folded Cascode
+  xm8 DM_N VINN TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=24
+  xm9 DM_P VINP TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=24
+  xm19 DM_N VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=400
+  xm20 DM_P VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=400
+  xm15 VOUTN VB3 DM_N GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=200
+  xm16 V1OUT VB3 DM_P GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=200
+  
+  * NMOS BIAS GENERATION
+  xm14 VB3 VB3 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=400
+  xm17 NET54 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=1600
+  xm12 VB4 VB3 NET54 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=1600
+  xm18 NET56 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=1600
+  xm13 DM_1 VB3 NET56 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=1600
+  
+  * SECOND STAGE
+  xm10 V2IN V1OUT VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GM2} m=18
+  xm21 V2IN V2IN GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=7
+  xm22 V2OUT V2IN GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=7
+  
+  * OUTPUT STAGE
+  xm23 VOUT V2OUT GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GM3} m=14
+  
+  * COMPENSATION (Nested Miller with Nulling Resistor)
+  C0 V1OUT NR {CM2}
+  C1 NR V2OUT {CM1}
+  R0 NR VOUT {RM}
+  
+  * BIAS CURRENT SOURCE
+  I0 VBIAS GNDA {IBIAS}
+  
+  .ends NMCNR
+
+testbench_template: |
+  * NMCNR Amplifier Testbench (Nested Miller Compensation with Nulling Resistor)
+  .lib {pdk_lib_path} tt
+  
+  {ota_subckt}
+  
+  VDD VDD 0 DC {vdd}
+  VSS VSS 0 DC 0
+  VINP VINP 0 DC {vcm} AC 0.5
+  VINN VINN 0 DC {vcm} AC -0.5
+
+  XDUT VSS VDD VINN VINP VOUT {subckt_name}
+
+  CLOAD VOUT 0 {cload}
+  RLOAD VOUT 0 {rload}
+
+  .control
+  op
+  let vdd_current = abs(i(VDD))
+  let power_dc = vdd_current * {vdd}
+  print power_dc
+
+  ac dec 100 1 10g
+  let gain_db = vdb(VOUT)
+  let dc_gain_db = gain_db[0]
+  print dc_gain_db
+
+  if dc_gain_db > 0
+    meas ac ugbw WHEN gain_db=0 CROSS=1
+  end
+  quit
+  .endc
+  .end

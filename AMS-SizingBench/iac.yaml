@@ -1,0 +1,215 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./iac_amplifier/optimization_results"
+
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for an Indirect Amplifier Compensation design."
+user_specs_metric: "dc_gain_db > 40 AND ugbw > 50 AND power_dc < 1000"
+
+params:
+  vdd: 1.8
+  vcm: 0.9
+  cload: 15e-9
+  rload: 25e3
+  CM1: 1.3e-12
+  CM2: 45e-12
+  RM: 40e3
+  IBIAS: 47e-6
+
+
+variable:
+
+  L: null
+  W_BIAS_P: null
+  W_BIAS_N: null
+  W_LOAD2: null
+  W_LOAD3: null
+  W_GM1: null
+  W_GM2: null
+  W_GMT: null
+
+
+# Variable ranges
+L_values: [0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 4.0]
+
+W_BIAS_P_values: [1.5, 2.5, 4.0, 6.0]
+W_BIAS_N_values: [3.0, 5.0, 7.0, 10.0]
+W_LOAD2_values: [6.0, 9.0, 12.0, 16.0]
+W_LOAD3_values: [6.0, 10.0, 14.0, 18.0]
+W_GM1_values: [7.0, 11.0, 15.0, 20.0]
+W_GM2_values: [6.0, 10.0, 14.0, 18.0]
+W_GMT_values: [4.0, 6.0, 8.0, 11.0]
+
+subckt_name: IAC
+subckt_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+I_O_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+testbench_signals:
+  GNDA: VSS
+  VDDA: VDD
+  VINN: VINN
+  VINP: VINP
+  VOUT: VOUT
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-3
+    decimals: 2
+    unit: "kHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+ota_subckt_template: |
+  .subckt IAC GNDA VDDA VINN VINP VOUT
+  * PMOS BIAS CURRENT MIRROR - Cascoded structure
+  xm65 VB2 VB2 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=46
+  xm0 NET2 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm57 VB1 VB2 NET2 VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm1 NET3 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm58 VB4 VB2 NET3 VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm3 NET8 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm62 VB3 VB2 NET8 VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm2 NET6 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm61 NET7 VB2 NET6 VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm4 TAIL VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=368
+  xm5 VOUTN VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm6 VOUTP VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=184
+  xm7 NET049 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=736
+  xm66 NET10 VB2 NET049 VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GMT} m=7
+  
+  * FIRST STAGE - PMOS Differential Pair with NMOS Folded Cascode
+  xm8 DM_2 VINN TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=11
+  xm9 NET063 VINP TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=11
+  xm19 DM_2 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=184
+  xm20 NET063 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=184
+  xm15 VOUTN VB3 DM_2 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=184
+  xm16 VOUTP VB3 NET063 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=184
+  
+  * NMOS BIAS GENERATION
+  xm14 VB3 VB3 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=23
+  xm17 NET54 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  xm12 VB4 VB3 NET54 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  xm18 NET56 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  xm13 NET7 VB3 NET56 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  xm64 NET9 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  xm63 VB2 VB3 NET9 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=92
+  
+  * SECOND STAGE
+  xm10 NET043 VOUTP VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GM2} m=43
+  xm70 NET1 NET043 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=33
+  xm69 NET10 NET043 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=33
+  xm67 NET043 VB3 NET1 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=736
+  xm68 NET1 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD3} m=50
+  
+  * OUTPUT STAGE
+  xm23 VOUT NET10 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w=2 m=11
+  xm11 VOUT VOUTP VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w=10 m=9
+  
+  * COMPENSATION (Indirect Amplifier)
+  C0 VOUTP VOUT {CM1}
+  C1 NET10 NET4 {CM2}
+  R0 NET4 GNDA {RM}
+  
+  * BIAS CURRENT SOURCE
+  I0 VB1 GNDA {IBIAS}
+  
+  .ends IAC
+
+testbench_template: |
+  * IAC Amplifier Testbench (Indirect Amplifier Compensation)
+  .lib {pdk_lib_path} tt
+  
+  {ota_subckt}
+  
+  VDD VDD 0 DC {vdd}
+  VSS VSS 0 DC 0
+  VINP VINP 0 DC {vcm} AC 0.5
+  VINN VINN 0 DC {vcm} AC -0.5
+
+  XDUT VSS VDD VINN VINP VOUT {subckt_name}
+
+  CLOAD VOUT 0 {cload}
+  RLOAD VOUT 0 {rload}
+
+  .control
+  op
+  let vdd_current = abs(i(VDD))
+  let power_dc = vdd_current * {vdd}
+  print power_dc
+
+  ac dec 100 1 10g
+  let gain_db = vdb(VOUT)
+  let dc_gain_db = gain_db[0]
+  print dc_gain_db
+
+  if dc_gain_db > 0
+    meas ac ugbw WHEN gain_db=0 CROSS=1
+  end
+  quit
+  .endc
+  .end

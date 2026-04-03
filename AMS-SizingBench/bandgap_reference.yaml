@@ -1,0 +1,172 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pnp_model_path: "/path/to/skywater-pdk/pnp_05v5_model.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./bandgap_voltage_reference/fom_test_new"
+
+
+user_specs: "Primary goal: Minimize temperature coefficient (TC) and maximize PSRR while maintaining reference voltage near 0.75V and minimizing power consumption and line regulation."
+
+user_specs_metric: "fom > 0.10 AND vref > 0.72 AND vref < 0.76 AND power_uw < 110 AND line_regulation_percent < 5.0 AND psrr_100hz_db > 25"
+
+params:
+  vdd: 2.0
+  temp: 27
+  vdd_min: 1.8
+  vdd_max: 3.3
+  measure_line_reg: true
+  measure_psrr: true
+  # Fixed parameters
+  m_mp: 3
+  m_mn: 2
+  m_q1: 1
+  m_q2: 8
+  m_q3: 1
+  W_mp_startup: 5
+  W_mn_startup: 1
+  L_startup: 7
+  m_mp_startup: 1
+  m_mn_startup: 1
+
+variable:
+  W_mp: null
+  L_mp: null
+  W_mn: null
+  L_mn: null
+  L_ra: null
+  L_rb: null
+
+# Unified value ranges
+W_values: [5, 10, 15, 20, 25, 30, 35, 40]
+L_values: [0.5, 1, 1.5, 2, 3, 4, 5]
+
+# Variable-specific ranges
+W_mp_values: [5, 10, 15, 20, 25, 30, 35, 40]
+L_mp_values: [1, 2, 3, 4, 5]
+W_mn_values: [5, 10, 15, 20, 25, 30]
+L_mn_values: [0.5, 1, 1.5, 2]
+L_ra_values: [10, 20, 31.2, 40, 50, 75, 100]
+L_rb_values: [30, 50, 75, 100, 113, 125, 150, 175, 200]
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: BANDGAP_REFERENCE
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - vref
+  - power_uw
+  - line_regulation_percent
+  - psrr_100hz_db
+  - fom
+
+base_metrics:
+  vref:
+    name: "Reference Voltage"
+    unit: "V"
+    format: ".6f"
+    degradation_key: "vref_percent"
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+  line_regulation_percent:
+    name: "Line Regulation"
+    unit: "%/V"
+    format: ".3f"
+    degradation_key: "line_reg_percent"
+  psrr_100hz_db:
+    name: "PSRR @ 100Hz"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "psrr_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  vref:
+    scale: 1
+    decimals: 6
+    unit: "V"
+  tc_ppm:
+    scale: 1
+    decimals: 1
+    unit: "ppm/°C"
+  power_uw:
+    scale: 1
+    decimals: 1
+    unit: "µW"
+  line_regulation_percent:
+    scale: 1
+    decimals: 3
+    unit: "%/V"
+  psrr_100hz_db:
+    scale: 1
+    decimals: 1
+    unit: "dB"
+  fom:
+    # FOM = (PSRR × |Vref - 1.2|_inv) / (Power × TC × Line_Reg)
+    # Better: closer to 1.2V, lower TC, higher PSRR, lower power, lower line reg
+    expr: "(abs(psrr_100hz_db) * 100 / (1 + abs(vref - 0.75) * 10)) / (power_uw * max(line_regulation_percent, 0.001))"
+    scale: 1
+    scale: 1
+    decimals: 4
+    unit: ""
+
+circuit_type: "bandgap_reference"
+
+ota_subckt_template: |
+  * Bandgap Reference Circuit
+  * Current Mirror (PMOS)
+  XMP1 NET1 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp} m={m_mp}
+  XMP2 NET2 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp} m={m_mp}
+  XMP3 NET3 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp} m=1
+  
+  * NMOS devices
+  XMN1 NET1 NET1 QP1 GND sky130_fd_pr__nfet_01v8_lvt l={L_mn} w={W_mn} m={m_mn}
+  XMN2 NET2 NET2 RA_TOP GND sky130_fd_pr__nfet_01v8_lvt l={L_mn} w={W_mn} m={m_mn}
+  
+  * Startup Circuit
+  XMP4 NET4 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp_startup} m={m_mp_startup}
+  XMP5 NET5 NET2 NET4 VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp_startup} m={m_mp_startup}
+  XMP6 NET7 NET6 NET2 VDD sky130_fd_pr__pfet_01v8_lvt l={L_mp} w={W_mp_startup} m=2
+  XMN3 NET6 NET6 NET8 GND sky130_fd_pr__nfet_01v8_lvt l={L_startup} w={W_mn_startup} m={m_mn_startup}
+  XMN4 NET8 NET8 GND GND sky130_fd_pr__nfet_01v8_lvt l={L_startup} w={W_mn_startup} m={m_mn_startup}
+  
+  * BJTs
+  XQP1 GND GND QP1 VDD sky130_fd_pr__pnp_05v5_W3p40L3p40 m={m_q1}
+  XQP2 GND GND QP2 VDD sky130_fd_pr__pnp_05v5_W3p40L3p40 m={m_q2}
+  XQP3 GND GND QP3 VDD sky130_fd_pr__pnp_05v5_W3p40L3p40 m={m_q3}
+  
+  * Resistors
+  XRA RA_TOP QP2 VDD sky130_fd_pr__res_high_po_1p41 w=1.41 l={L_ra}
+  XRB NET3 QP3 VDD sky130_fd_pr__res_high_po_1p41 w=1.41 l={L_rb}
+  
+  * Sources
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * Bandgap Reference
+  .lib {pdk_lib_path} tt
+  .include {pnp_model_path}
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  set noaskquit
+  op
+  quit
+  .endc
+  
+  .end

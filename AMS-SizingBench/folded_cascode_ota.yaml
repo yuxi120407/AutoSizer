@@ -1,0 +1,228 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./folded_cascode_ota/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a folded-cascode OTA with 1pF load and 10µA tail current."
+user_specs_metric: "fom > 3.0 AND dc_gain_db > 1.5 AND ugbw > 10 AND power_dc < 1.0"
+
+
+params:
+  L: 0.15
+  vdd: 1.8
+  vbn: 0.7
+  vbp: 1.0
+  vcm: 0.9
+  cload: 1e-12
+  itail: 10e-6
+
+  
+
+
+variable:
+  W_in_base: null
+  W_fold_base: null
+  W_sink_base: null
+  W_mirror_base: null
+  W_casc_n_base: null
+  W_casc_p_base: null
+  
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+width_scales:
+  W_in:   [W_in_base, 4]
+  W_fold:   [W_fold_base, 4]
+  W_sink: [W_sink_base, 20]
+  W_mirror:    [W_mirror_base, 20]
+  W_casc_n:   [W_casc_n_base, 20]
+  W_casc_p:   [W_casc_p_base, 20]
+
+subckt_name: FOLDED_CASCODE_OTA
+subckt_pins: 
+  - VSS_NODE
+  - VDD_NODE
+  - VOUT_NODE
+  - VINN_NODE
+  - VINP_NODE
+  - VBN_NODE
+  - VBP_NODE
+  - VTAIL_NODE
+
+I_O_pins:
+  - VSS_NODE
+  - VDD_NODE
+  - VOUT_NODE
+  - VINN_NODE
+  - VINP_NODE
+  - VBN_NODE
+  - VBP_NODE
+  - VTAIL_NODE
+
+testbench_signals:
+  VSS_NODE: VSS_NODE
+  VDD_NODE: VDD_NODE
+  VOUT_NODE: VOUT_NODE
+  VINN_NODE: VINN_NODE
+  VINP_NODE: VINP_NODE
+  VBN_NODE: VBN_NODE
+  VBP_NODE: VBP_NODE
+  VTAIL_NODE: VTAIL_NODE
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-6
+    decimals: 2
+    unit: "MHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+    .subckt FOLDED_CASCODE_OTA VSS VDD VOUT VINN VINP VBN VBP VTAIL 
+    * PMOS differential input pair
+    XM1 NET1 VINP VTAIL VDD sky130_fd_pr__pfet_01v8 w={W_in} l={L}
+    XM2 VOUT VINN VTAIL VDD sky130_fd_pr__pfet_01v8 w={W_in} l={L}
+    
+    * NMOS folding devices
+    XM3 NET1 VBN NET2 VSS sky130_fd_pr__nfet_01v8 w={W_fold} l={L}
+    XM4 VOUT VBN NET3 VSS sky130_fd_pr__nfet_01v8 w={W_fold} l={L}
+    
+    * NMOS cascode (bottom) - FIXED: NET2 and NET3 connect to folding devices
+    XM5 NET2 VBN VSS VSS sky130_fd_pr__nfet_01v8 w={W_casc_n} l={L}
+    XM6 NET3 VBN VSS VSS sky130_fd_pr__nfet_01v8 w={W_casc_n} l={L}
+    
+    * PMOS current mirror loads
+    XM7 NET1 NET1 NET5 VDD sky130_fd_pr__pfet_01v8 w={W_sink} l={L}
+    XM8 VOUT NET1 NET6 VDD sky130_fd_pr__pfet_01v8 w={W_sink} l={L}
+    
+    * PMOS cascode (top)
+    XM9  NET5 VBP VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirror} l={L}
+    XM10 NET6 VBP VDD VDD sky130_fd_pr__pfet_01v8 w={W_casc_p} l={L}
+    .ends FOLDED_CASCODE_OTA
+
+# INLINED subckt here; no {ota_subckt} placeholder needed
+testbench_template: |
+    * Folded-Cascode OTA testbench
+    .lib {pdk_lib_path} tt
+    .options GMIN=1e-10 RELTOL=1e-4 ABSTOL=1e-12
+    
+    {ota_subckt}
+    
+    * Rails - Use voltage sources to measure current
+    VVDD  VDD_NODE   0   DC {vdd}
+    VVSS  VSS_NODE   0   DC 0
+    
+    * Bias voltages
+    VBN   VBN_NODE   0   DC {vbn}
+    VBP   VBP_NODE   0   DC {vbp}
+    
+    * Differential inputs
+    VINP  VINP_NODE  0   DC {vcm} AC 0.5
+    VINN  VINN_NODE  0   DC {vcm} AC -0.5
+    
+    * Tail current - Use 0V voltage source to measure current
+    VTAIL VDD_NODE VTAIL_NODE DC 0
+    ITAIL_SRC VTAIL_NODE 0 DC {itail}
+    
+    * DUT and load
+    XOTA  VSS_NODE VDD_NODE VOUT_NODE VINN_NODE VINP_NODE VBN_NODE VBP_NODE VTAIL_NODE {subckt_name}
+    CLOAD VOUT_NODE VSS_NODE {cload}
+    
+    .op
+    .ac dec 200 1 10G
+    
+    * Measurements
+    .measure ac dc_gain_db max vdb(VOUT_NODE)
+    .measure ac ugbw when vdb(VOUT_NODE)=0 fall=1
+    
+    .control
+    set noaskquit
+    op
+    ac dec 200 1 10G
+    
+    * Power measurement
+    let power_dc = abs(i(VVDD)[0]) * {vdd} * 100
+    print power_dc
+    
+    * AC gain
+    let vout_ac = ac1.v(VOUT_NODE)
+    let gain_linear = mag(vout_ac[0])
+    let gain_db = 20*log(gain_linear)/log(10)
+    print gain_db
+    
+    * UGBW
+    let vout_mag = mag(vout_ac)
+    let freq_vec = frequency
+    let gain_db_vec = 20*log(vout_mag)/log(10)
+    
+    let idx = 0
+    let ugbw_hz = 0
+    while idx < length(gain_db_vec) - 1
+      if (gain_db_vec[idx] > 0) & (gain_db_vec[idx+1] < 0)
+        let ugbw_hz = freq_vec[idx]
+        print ugbw_hz
+        break
+      end
+      let idx = idx + 1
+    end
+    
+    quit
+    .endc
+    .end
+

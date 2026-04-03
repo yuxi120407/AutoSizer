@@ -1,0 +1,205 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./vco_optimization_results/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize tuning range and VCO gain while minimizing power consumption and achieving high center frequency for PLL and frequency synthesis applications."
+
+user_specs_metric: "fom > 0.5 AND tuning_range_percent > 30 AND freq_at_max > 500 AND vco_gain_MHz_per_V > 200"
+
+params:
+  vdd: 1.8
+  temp: 27
+  num_stages: 5
+  v_ctrl: 0.9 
+  v_ctrl_min: 0.0
+  v_ctrl_max: 1.8
+  num_v_ctrl_points: 10
+  cap_base: 5e-15
+  cap_variable_max: 50e-15
+
+variable:
+  W_inv_p_base: null
+  W_inv_n_base: null
+  L_inv_p_base: null
+  L_inv_n_base: null
+
+W_values: [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
+L_values: [0.15, 0.20, 0.30, 0.50, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+width_scales:
+  W_inv_p:  [W_inv_p_base, 1]
+  W_inv_n:  [W_inv_n_base, 1]
+
+length_scales:
+  L_inv_p:  [L_inv_p_base, 1]
+  L_inv_n:  [L_inv_n_base, 1]
+
+subckt_name: VCO_RING
+
+subckt_pins:
+  - VDD
+  - GND
+
+I_O_pins:
+  - VDD
+  - GND
+
+testbench_signals:
+    VDD: VDD
+    GND: GND
+
+metrics:
+  - tuning_range_percent
+  - freq_at_max
+  - power_uw
+  - vco_gain_MHz_per_V
+  - fom
+
+base_metrics:
+  tuning_range_percent:
+    name: "Tuning Range"
+    unit: "%"
+    format: ".1f"
+    degradation_key: "tuning_range_percent"
+
+  freq_at_max:
+    name: "Max Frequency"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "freq_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  vco_gain_MHz_per_V:
+    name: "VCO Gain"
+    unit: "MHz/V"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  tuning_range_percent:
+    scale: 1
+    decimals: 1
+    unit: "%"
+
+  freq_at_max:
+    scale: 1e-6
+    decimals: 1
+    unit: "MHz"
+
+  power_uw:
+    scale: 1
+    decimals: 1
+    unit: "µW"
+
+  vco_gain_MHz_per_V:
+    scale: 1
+    decimals: 1
+    unit: "MHz/V"
+
+  fom:
+    expr: "(tuning_range_percent / 100) * (freq_at_max / 1e3) * (1000 / power_uw) * (vco_gain_MHz_per_V / 1000) * 10"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+# Everything BEFORE .control (circuit definition)
+# Everything BEFORE .control (circuit definition)
+ota_subckt_template: |
+  *** Stage 0 (10% weaker PMOS for symmetry breaking)
+  XMPINV0 N1 N0 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv_p} w={{{W_inv_p}*0.9}} m=1
+  XMNINV0 N1 N0 GND GND sky130_fd_pr__nfet_01v8 l={L_inv_n} w={W_inv_n} m=1
+  
+  *** Stage 1
+  XMPINV1 N2 N1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv_p} w={W_inv_p} m=1
+  XMNINV1 N2 N1 GND GND sky130_fd_pr__nfet_01v8 l={L_inv_n} w={W_inv_n} m=1
+  
+  *** Stage 2
+  XMPINV2 N3 N2 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv_p} w={W_inv_p} m=1
+  XMNINV2 N3 N2 GND GND sky130_fd_pr__nfet_01v8 l={L_inv_n} w={W_inv_n} m=1
+  
+  *** Stage 3
+  XMPINV3 N4 N3 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv_p} w={W_inv_p} m=1
+  XMNINV3 N4 N3 GND GND sky130_fd_pr__nfet_01v8 l={L_inv_n} w={W_inv_n} m=1
+  
+  *** Stage 4
+  XMPINV4 N0 N4 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv_p} w={W_inv_p} m=1
+  XMNINV4 N0 N4 GND GND sky130_fd_pr__nfet_01v8 l={L_inv_n} w={W_inv_n} m=1
+  
+  *** Load capacitors
+  C0 N0 GND {cap_total}
+  C1 N1 GND {cap_total}
+  C2 N2 GND {cap_total}
+  C3 N3 GND {cap_total}
+  C4 N4 GND {cap_total}
+  
+  *** Power supply
+  VSUP VDD GND PWL(0 0 10n {vdd})
+  
+  *** Symmetry breaking resistor
+  RBREAK N0 GND 10G
+
+# Everything FROM .control onward (simulation commands)
+testbench_template: |
+  * Voltage-Controlled Oscillator - Multi-point characterization
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  * VCO characterization: sweep v_ctrl and measure frequency
+  let v_ctrl_points = 10
+  let v_ctrl_min = {v_ctrl_min}
+  let v_ctrl_max = {v_ctrl_max}
+  let v_ctrl_step = (v_ctrl_max - v_ctrl_min) / (v_ctrl_points - 1)
+  
+  * Output file for results
+  set wr_singlescale
+  set wr_vecnames
+  
+  * Loop over v_ctrl values
+  let i = 0
+  while i < v_ctrl_points
+    * Calculate current v_ctrl
+    let v_ctrl_current = v_ctrl_min + i * v_ctrl_step
+    
+    * Update capacitors based on v_ctrl
+    let cap_base = {cap_base}
+    let cap_variable = (v_ctrl_current / {vdd}) * {cap_variable_max}
+    let cap_total_val = cap_base + cap_variable
+    
+    alter C0 = cap_total_val
+    alter C1 = cap_total_val
+    alter C2 = cap_total_val
+    alter C3 = cap_total_val
+    alter C4 = cap_total_val
+    
+    * Run transient simulation
+    tran 1n 20u
+    
+    * Save results to files with index
+    print v(N3) > vco_tran_$&i.txt
+    print i(VSUP) > vco_current_$&i.txt
+    
+    * Increment counter
+    let i = i + 1
+  end
+  
+  quit
+  .endc
+  
+  .end

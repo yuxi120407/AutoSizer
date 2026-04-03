@@ -1,0 +1,198 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./buffer_test_folder/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize DC gain while minimizing average delay and dynamic power consumption for a two-stage buffer driving 10fF load."
+#user_specs_metric: "fom > 0.018 AND dc_gain_db > 20 AND average_delay < 100 AND dynamic_power < 50"
+user_specs_metric: "fom > 2.5 AND dc_gain_db > 25 AND average_delay < 80 AND dynamic_power < 50"
+
+params:
+  L: 0.15
+  vdd_voltage: 1.8
+  load_cap: 10e-15
+
+variable:
+  W_pmos1_base: null
+  W_nmos1_base: null
+  W_pmos2_base: null
+  W_nmos2_base: null
+
+
+W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+
+width_scales:
+  W_pmos1:   [W_pmos1_base, 10]
+  W_nmos1:   [W_nmos1_base, 10]
+  W_pmos2:   [W_pmos2_base, 10]
+  W_nmos2:   [W_nmos2_base, 10]
+
+
+subckt_name: BUFFER
+subckt_pins: 
+  - IN
+  - OUT
+  - VSS
+  - VDD
+
+I_O_pins:
+  - IN
+  - OUT
+  - VSS
+  - VDD
+
+testbench_signals:
+  IN: IN
+  OUT: OUT
+  VSS: VSS
+  VDD: VDD
+
+
+metrics:
+  - dc_gain_db
+  - average_delay
+  - dynamic_power
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".2f"
+    degradation_key: "power_percent"
+
+  delay_ps:
+    name: "Delay"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  average_delay:
+    scale: 1e12
+    decimals: 2
+    unit: "ps"
+
+  dynamic_power:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db / (average_delay * dynamic_power)"
+    scale: 1
+    decimals: 5
+    unit: ""
+
+
+
+# keep this block present (your code expects this key), but it won’t be injected;
+# the subckt is inlined below inside testbench_template
+ota_subckt_template: |
+    .subckt BUFFER IN OUT VSS VDD
+    * First stage inverter
+    XM0 OUT1 IN VSS VSS sky130_fd_pr__nfet_01v8 w={W_nmos1} l={L}
+    XM2 OUT1 IN VDD VDD sky130_fd_pr__pfet_01v8 w={W_pmos1} l={L}
+    * Second stage inverter  
+    XM1 OUT OUT1 VSS VSS sky130_fd_pr__nfet_01v8 w={W_nmos2} l={L}
+    XM3 OUT OUT1 VDD VDD sky130_fd_pr__pfet_01v8 w={W_pmos2} l={L}
+    .ends BUFFER
+
+
+testbench_template: |
+    * Circuit Analysis
+    .lib {pdk_lib_path} tt
+    .option scale=1e-6
+    
+    {ota_subckt}
+    
+    * Test circuit
+    Vdd VDD 0 DC {vdd_voltage}
+    Vss VSS 0 DC 0
+    Vin IN 0 DC 0 PULSE(0 {vdd_voltage} 200p 100p 100p 2n 4n)
+    Xcircuit {inst_pins} {subckt_name}
+    Cout OUT 0 {load_cap}
+    
+    * DC Sweep for Gain
+    .dc Vin 0 {vdd_voltage} 0.01
+    
+    .control
+    run
+    
+    let vout_deriv = deriv(v(OUT))
+    let gain_linear = abs(vout_deriv)
+    let gain_db = db(gain_linear)
+    meas dc dc_gain_db MAX gain_db
+    
+    
+    print dc_gain_db 
+    .endc
+    
+    * Transient for Power and Delay
+    .control
+    destroy all
+    reset
+    tran 1p 8n
+    
+    * Power calculation
+    let power = v(VDD) * (-i(Vdd))
+    let avg_power = mean(power)
+    meas tran static_i AVG i(Vdd) from=50p to=150p
+    let static_power = abs(static_i) * {vdd_voltage}
+    let dynamic_power = abs(avg_power - static_power)
+    
+    * Delay measurements - find 50% crossings
+    meas tran t_in_r WHEN v(IN)=0.9 CROSS=1
+    meas tran t_out_r WHEN v(OUT)=0.9 CROSS=1
+    meas tran t_in_f WHEN v(IN)=0.9 CROSS=2
+    meas tran t_out_f WHEN v(OUT)=0.9 CROSS=2
+    
+    let tplh = t_out_r - t_in_r
+    let tphl = t_out_f - t_in_f
+    let average_delay = (tplh + tphl)/2
+    
+    print dynamic_power average_delay
+    quit
+    .endc
+    
+    .end
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+

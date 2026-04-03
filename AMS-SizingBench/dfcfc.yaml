@@ -1,0 +1,209 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./dfcfc_amplifier/optimization_results"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a Damping-Factor-Control Frequency-Compensation amplifier."
+user_specs_metric: "dc_gain_db > 20 AND ugbw > 10 AND power_dc < 400"
+
+params:
+  vdd: 1.8
+  vcm: 0.9
+  cload: 15e-9
+  rload: 25e3
+  CM1: 500e-15
+  CM2: 200e-15
+  IBIAS: 10e-6
+
+variable:
+  L: null
+  W_BIAS_P: null
+  W_BIAS_N: null
+  W_CASC_N: null
+  W_GM1: null
+  W_GM2: null
+  W_GMF2: null
+  W_GM3: null
+  W_GM4: null
+  W_LOAD2: null
+
+
+# Variable ranges
+L_values: [0.8, 1.0, 1.5, 2.0]
+
+W_BIAS_P_values: [2.0, 5.0, 10.0, 15.0, 20.0]
+W_BIAS_N_values: [6.0, 8.0, 10.0]
+W_CASC_N_values: [6.0, 8.0, 10.0]
+W_GM1_values: [6.0, 8.0, 10.0]
+W_GM2_values: [6.0, 8.0, 10.0]
+W_GMF2_values: [6.0, 8.0, 10.0]
+W_GM3_values: [6.0, 8.0, 10.0]
+W_GM4_values: [6.0, 8.0, 10.0]
+W_LOAD2_values: [6.0, 8.0, 10.0]
+
+subckt_name: DFCFC
+subckt_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+I_O_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+testbench_signals:
+  GNDA: VSS
+  VDDA: VDD
+  VINN: VINN
+  VINP: VINP
+  VOUT: VOUT
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-3
+    decimals: 2
+    unit: "kHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+
+ota_subckt_template: |
+  .subckt DFCFC GNDA VDDA VINN VINP VOUT
+  * PMOS BIAS CURRENT MIRROR
+  xm0 VBIAS VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm1 VB4 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm2 DM_1 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm3 VB3 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm4 TAIL VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=8
+  xm5 VOUTN VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm6 V1OUT VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm7 V2OUT VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm8 NET1 VBIAS VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  
+  * FIRST STAGE
+  xm9 DM_2 VINN TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=4
+  xm10 DM_P VINP TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=4
+  xm20 DM_2 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=32
+  xm21 DM_P VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=32
+  xm16 VOUTN VB3 DM_2 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_CASC_N} m=32
+  xm17 V1OUT VB3 DM_P GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_CASC_N} m=32
+  
+  * NMOS BIAS GENERATION
+  xm15 VB3 VB3 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=4
+  xm18 NET54 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=16
+  xm13 VB4 VB3 NET54 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=16
+  xm19 NET56 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=16
+  xm14 DM_1 VB3 NET56 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=16
+  
+  * SECOND STAGE
+  xm11 V2IN V1OUT VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GM2} m=4
+  xm22 V2IN V2IN GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=4
+  xm23 V2OUT V2IN GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD2} m=4
+  
+  * OUTPUT STAGE
+  xm25 VOUT V2OUT GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GM3} m=4
+  xm12 VOUT V1OUT VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GMF2} m=4
+  
+  * DAMPING FACTOR CONTROL
+  xm24 NET1 V2OUT GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GM4} m=4
+  
+  * COMPENSATION
+  C0 V1OUT VOUT {CM1}
+  C1 V2OUT NET1 {CM2}
+  
+  * BIAS CURRENT SOURCE
+  I0 VBIAS GNDA {IBIAS}
+  
+  .ends DFCFC
+
+testbench_template: |
+  * DFCFC Amplifier Testbench
+  .lib {pdk_lib_path} tt
+  
+  {ota_subckt}
+  
+  VDD VDD 0 DC {vdd}
+  VSS VSS 0 DC 0
+  VINP VINP 0 DC {vcm} AC 0.5
+  VINN VINN 0 DC {vcm} AC -0.5
+
+  XDUT VSS VDD VINN VINP VOUT {subckt_name}
+
+  CLOAD VOUT 0 {cload}
+  RLOAD VOUT 0 {rload}
+
+  .control
+  op
+  let vdd_current = abs(i(VDD))
+  let power_dc = vdd_current * {vdd}
+  print power_dc
+
+  ac dec 100 1 10g
+  let gain_db = vdb(VOUT)
+  let dc_gain_db = gain_db[0]
+  print dc_gain_db
+
+  if dc_gain_db > 0
+    meas ac ugbw WHEN gain_db=0 CROSS=1
+  end
+  quit
+  .endc
+  .end

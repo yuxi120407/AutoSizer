@@ -1,0 +1,210 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./fdgb_amplifier/optimization_results"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a Fully Differential Gain-Boosted amplifier."
+user_specs_metric: "dc_gain_db > 40 AND ugbw > 10 AND power_dc < 1000"
+
+params:
+  vdd: 1.8
+  vcm: 0.9
+  cload: 5e-12
+  rload: 100e3
+  IBIAS: 10e-6
+
+
+variable:
+  L: null
+  W_GM1: null
+  W_CASC_N: null
+  W_CASC_P: null
+  W_CURR_P: null
+  W_TAIL: null
+  W_AUX_GM: null
+  W_AUX_LOAD: null
+  W_AUX_TAIL: null
+  W_BIAS_P: null
+  W_BIAS_N: null
+
+# Variable ranges
+L_values: [1.0, 1.5, 2.0]
+
+
+W_GM1_values: [1.0, 1.5, 2.0]
+W_CASC_N_values: [1.0, 1.5, 2.0]
+W_CASC_P_values: [1.0, 1.5, 2.0]
+W_CURR_P_values: [1.0, 1.5, 2.0]
+W_TAIL_values: [1.0, 1.5, 2.0]
+W_AUX_GM_values: [1.0, 1.5, 2.0]
+W_AUX_LOAD_values: [1.0, 1.5, 2.0]
+W_AUX_TAIL_values: [1.0, 1.5, 2.0]
+W_BIAS_P_values: [0.5, 1.0, 1.5]
+W_BIAS_N_values: [1.0, 1.5]
+
+subckt_name: FDGB
+subckt_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUTN
+  - VOUTP
+
+I_O_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUTN
+  - VOUTP
+
+testbench_signals:
+  GNDA: VSS
+  VDDA: VDD
+  VINN: VINN
+  VINP: VINP
+  VOUTN: VOUTN
+  VOUTP: VOUTP
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-3
+    decimals: 2
+    unit: "kHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+ota_subckt_template: |
+  .subckt FDGB GNDA VDDA VINN VINP VOUTN VOUTP
+  * BIAS GENERATION
+  xm_bias_p0 VBIAS_P0 VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm_bias_p1 VBIAS_P1 VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm_bias_p1_load VBIAS_P1 VBIAS_P1 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=4
+  xm_bias_n0 VBIAS_N0 VBIAS_N0 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=4
+  xm_bias_n0_src VBIAS_N0 VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  xm_bias_n1 VBIAS_N1 VBIAS_N1 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_BIAS_N} m=4
+  xm_bias_n1_src VBIAS_N1 VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS_P} m=4
+  I0 VBIAS_P0 GNDA {IBIAS}
+  
+  * MAIN AMPLIFIER - NMOS Input Differential Pair
+  xm0 NET_DM_N VINN TAIL GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GM1} m=4
+  xm3 NET_DM_P VINP TAIL GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GM1} m=4
+  xm4 TAIL VBIAS_N0 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_TAIL} m=4
+  
+  * NMOS CASCODE (gain boosted by aux amp 2)
+  xm7 VOUTP NET_AUX2_P NET_DM_N GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_CASC_N} m=4
+  xm8 VOUTN NET_AUX2_N NET_DM_P GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_CASC_N} m=4
+  
+  * PMOS CASCODE (gain boosted by aux amp 1)
+  xm5 VOUTP NET_AUX1_P NET_CS_P VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_CASC_P} m=4
+  xm6 VOUTN NET_AUX1_N NET_CS_N VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_CASC_P} m=4
+  
+  * PMOS CURRENT SOURCES
+  xm1 NET_CS_N VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_CURR_P} m=4
+  xm2 NET_CS_P VBIAS_P0 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_CURR_P} m=4
+  
+  * AUXILIARY AMP 1 (boosts PMOS cascode) - separate tail node
+  xm12 NET_AUX1_N NET_CS_N TAIL_AUX1 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_GM} m=2
+  xm13 NET_AUX1_P NET_CS_P TAIL_AUX1 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_GM} m=2
+  xm11 TAIL_AUX1 VBIAS_N1 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_TAIL} m=2
+  xm9 NET_AUX1_N VBIAS_P1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AUX_LOAD} m=2
+  xm10 NET_AUX1_P VBIAS_P1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AUX_LOAD} m=2
+
+  * AUXILIARY AMP 2 (boosts NMOS cascode) - separate tail node
+  xm17 NET_AUX2_P NET_DM_N TAIL_AUX2 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_GM} m=2
+  xm18 NET_AUX2_N NET_DM_P TAIL_AUX2 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_GM} m=2
+  xm16 TAIL_AUX2 VBIAS_N1 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AUX_TAIL} m=2
+  xm14 NET_AUX2_P VBIAS_P1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AUX_LOAD} m=2
+  xm15 NET_AUX2_N VBIAS_P1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AUX_LOAD} m=2
+  .ends FDGB
+
+testbench_template: |
+    * FDGB Simulation (Fully Differential Gain Boosting)
+    .lib {pdk_lib_path} tt
+
+    {ota_subckt}
+
+    VDD VDD 0 DC {vdd}
+    VSS VSS 0 DC 0
+    VINP VINP 0 DC {vcm} AC 0.5
+    VINN VINN 0 DC {vcm} AC -0.5
+
+    XDUT {inst_pins} FDGB
+
+    CLP VOUTP 0 {cload}
+    CLN VOUTN 0 {cload}
+    RLP VOUTP 0 {rload}
+    RLN VOUTN 0 {rload}
+
+    .control
+    op
+    let vdd_current = abs(i(VDD))
+    let power_dc = vdd_current * {vdd}
+    print power_dc
+
+    ac dec 100 1 10g
+    let vout_diff = v(VOUTN) - v(VOUTP)
+    let gain_db = db(vout_diff)
+    let dc_gain_db = gain_db[0]
+    print dc_gain_db
+
+    if dc_gain_db > 0
+        meas ac ugbw WHEN gain_db=0 CROSS=1
+    end
+    quit
+    .endc
+    .end

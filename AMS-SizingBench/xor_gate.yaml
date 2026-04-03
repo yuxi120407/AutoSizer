@@ -1,0 +1,165 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./xor_gate_results/fom_test_new"
+
+
+user_specs: "Primary goal: Minimize delay and energy per transition while maintaining good noise margins for high-speed digital logic applications."
+
+user_specs_metric: "fom > 0.25 AND avg_delay_ps < 8000 AND power_total_uw < 5.0 AND energy_per_transition_fj < 40 AND noise_margin_high > 0.3 AND noise_margin_low > 0.3"
+
+params:
+  vdd: 1.8
+  temp: 27
+  freq: 100e6      # 100 MHz
+  c_load: 10e-15   # 10 fF load capacitance
+
+variable:
+  W_pmos: null
+  W_nmos: null
+  L_pmos: null
+  L_nmos: null
+
+# Unified value ranges
+W_values: [0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
+L_values: [0.15, 0.18, 0.20, 0.25, 0.30]
+
+# Variable-specific ranges
+W_pmos_values: [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0]      # 7 values
+W_nmos_values: [0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]     # 7 values
+L_pmos_values: [0.15, 0.18, 0.20, 0.25, 0.30]            # 5 values
+L_nmos_values: [0.15, 0.18, 0.20, 0.25, 0.30]            # 5 values
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: XOR_GATE
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - avg_delay_ps
+  - power_total_uw
+  - energy_per_transition_fj
+  - noise_margin_high
+  - noise_margin_low
+  - fom
+
+base_metrics:
+  avg_delay_ps:
+    name: "Average Delay"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+  power_total_uw:
+    name: "Total Power"
+    unit: "µW"
+    format: ".3f"
+    degradation_key: "power_percent"
+  energy_per_transition_fj:
+    name: "Energy per Transition"
+    unit: "fJ"
+    format: ".3f"
+    degradation_key: "energy_percent"
+  noise_margin_high:
+    name: "Noise Margin High"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "nmh_percent"
+  noise_margin_low:
+    name: "Noise Margin Low"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "nml_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  avg_delay_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+  power_total_uw:
+    scale: 1
+    decimals: 3
+    unit: "µW"
+  energy_per_transition_fj:
+    scale: 1
+    decimals: 3
+    unit: "fJ"
+  noise_margin_high:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  noise_margin_low:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  fom:
+    # FOM = (NMH × NML) / (avg_delay_ps × energy_per_transition_fj)
+    # Maximize: Noise margins
+    # Minimize: Average delay and energy per transition
+    expr: "((noise_margin_high + noise_margin_low) / 2 / 0.5) / (max(energy_per_transition_fj, 0.001) / 100 * max(avg_delay_ps, 1) / 10000)"
+    scale: 1  # Scale up for readability
+    decimals: 4
+    unit: ""
+
+circuit_type: "xor_gate"
+
+ota_subckt_template: |
+  * 2-Input XOR Gate (Transmission Gate Implementation)
+  * Y = A⊕B
+  
+  * Transmission gate 1: passes A when B=0
+  XMP_TG1 N1 B_N A VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_TG1 N1 B A GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Transmission gate 2: passes A' when B=1
+  XMP_TG2 N2 B A_N VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_TG2 N2 B_N A_N GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Inverter for A
+  XMP_INVA A_N A VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_INVA A_N A GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Inverter for B
+  XMP_INVB B_N B VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_INVB B_N B GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Output stage
+  XMP_OUT Y N_INT VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={{{W_pmos}*2}}
+  XMN_OUT Y N_INT GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={{{W_nmos}*2}}
+  
+  * Combine logic
+  XMP_COMB1 N_INT N1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_COMB1 N_INT N1 GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  XMP_COMB2 N_INT N2 VDD VDD sky130_fd_pr__pfet_01v8 l={L_pmos} w={W_pmos}
+  XMN_COMB2 N_INT N2 GND GND sky130_fd_pr__nfet_01v8 l={L_nmos} w={W_nmos}
+  
+  * Load
+  CL Y GND {c_load}
+  
+  * Supply
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * XOR Gate Testbench
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  set noaskquit
+  op
+  quit
+  .endc
+  
+  .end

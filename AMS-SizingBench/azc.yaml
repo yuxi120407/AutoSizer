@@ -1,0 +1,222 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./azc_amplifier/optimization_results"
+
+
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for an Active-Zero Compensation amplifier with 15nF load and 25kΩ load resistance."
+user_specs_metric: "fom > 1.0 AND dc_gain_db > 45 AND ugbw > 100 AND power_dc < 120"
+
+params:
+  vdd: 1.8
+  vcm: 0.3
+  cload: 15e-9
+  rload: 25e3
+  CM: 810e-15
+  C1: 404e-15
+  C2: 310e-15
+  R0: 35e3
+  R1: 35e3
+  R2: 350e3
+  R3: 40e3
+  IBIAS: 1e-6
+
+
+variable:
+  L: null
+  W_BIAS: null
+  W_AZC1: null
+  W_AZC23: null
+  W_LOAD: null
+  W_GM1: null
+  W_GM2: null
+  W_GMFOUT: null
+
+
+width_scales:
+  "2*W_BIAS": [W_BIAS, 2]
+  "7*W_BIAS": [W_BIAS, 7]  
+# Conservative ranges - focusing on feasible designs
+# Start with longer channels for stability
+L_values: [0.5, 1.0, 1.5, 2.0]
+
+# Width values optimized for 1µA bias current
+W_BIAS_values: [5.0, 10.0, 20.0]        # Bias transistors
+W_AZC1_values: [10.0, 20.0, 40.0]       # AZC stage 1
+W_AZC23_values: [10.0, 20.0, 40.0]      # AZC stages 2&3
+W_LOAD_values: [20.0, 40.0, 80.0]       # Load transistors (larger for better gain)
+W_GM1_values: [40.0, 80.0, 120.0]       # Input differential pair (large for gm)
+W_GM2_values: [40.0, 80.0, 120.0]       # Second stage
+W_GMFOUT_values: [40.0, 80.0, 120.0]    # Feedback/output stage
+
+subckt_name: AZC_OTA
+subckt_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+I_O_pins:
+  - GNDA
+  - VDDA
+  - VINN
+  - VINP
+  - VOUT
+
+testbench_signals:
+  GNDA: VSS
+  VDDA: VDD
+  VINN: VINN
+  VINP: VINP
+  VOUT: VOUT
+
+metrics:
+  - dc_gain_db
+  - ugbw
+  - power_dc
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Gain"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "gain_percent"
+
+  power_uw:
+    name: "Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+
+  ugbw_mhz:
+    name: "UGBW"
+    unit: "MHz"
+    format: ".1f"
+    degradation_key: "ugbw_percent"
+
+  area:
+    name: "Area"
+    unit: "µm²"
+    format: ".1f"
+    degradation_key: "area_percent"
+
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+# New: how to present each metric
+metric_post:
+  dc_gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+
+  ugbw:
+    scale: 1e-3
+    decimals: 5
+    unit: "kHz"
+
+  power_dc:
+    scale: 1e6
+    decimals: 2
+    unit: "µW"
+
+  fom:
+    expr: "dc_gain_db * ugbw / power_dc"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+ota_subckt_template: |
+  .subckt AZC_OTA GNDA VDDA VINN VINP VOUT
+  * PMOS BIAS CURRENT MIRROR Active_Zero_Compensated_Miller_OTA
+  xm0 VB1 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=4
+  xm1 VB4 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=4
+  xm2 TAIL VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=8
+  xm4 VOUTN VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=4
+  xm5 NET050 VOUTN VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=4
+  xm3 NET078 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=24
+  xm8 NET049 VB1 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_BIAS} m=8
+  
+  * AZC2 - PMOS
+  xm6 NET055 NET055 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AZC23} m=4
+  xm7 NET057 NET055 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_AZC23} m=8
+  
+  * FIRST STAGE
+  xm9 DM_2 VINN TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=4
+  xm10 NET063 VINP TAIL TAIL sky130_fd_pr__pfet_01v8 l={L} w={W_GM1} m=4
+  
+  * NMOS BIAS AND LOADS
+  xm19 VB4 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={2*W_BIAS} m=4
+  xm20 DM_2 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={7*W_BIAS} m=4
+  xm21 NET063 VB4 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={7*W_BIAS} m=4
+  
+  * FIRST STAGE LOAD
+  xm16 NET077 DM_2 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD} m=4
+  xm17 NET082 NET063 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD} m=4
+  xm14 VOUTN NET077 DM_2 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD} m=4
+  xm15 NET050 NET082 NET063 GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_LOAD} m=4
+  
+  * SECOND STAGE
+  xm11 NET094 NET050 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GM2} m=4
+  xm12 NET055 NET094 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AZC1} m=4
+  xm22 NET094 NET051 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AZC23} m=16
+  xm23 NET057 NET043 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AZC23} m=12
+  xm24 NET049 NET057 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_AZC23} m=4
+  
+  * OUTPUT STAGE
+  xm18 VOUT NET049 GNDA GNDA sky130_fd_pr__nfet_01v8 l={L} w={W_GMFOUT} m=4
+  xm13 VOUT NET050 VDDA VDDA sky130_fd_pr__pfet_01v8 l={L} w={W_GMFOUT} m=4
+  
+
+  * COMPENSATION NETWORK
+  R0 NET078 NET077 {R0}
+  R1 NET078 NET082 {R1}
+  R2 NET057 NET051 {R2}
+  R3 NET057 NET043 {R3}
+  C0 NET063 VOUT {CM}
+  C1 NET051 GNDA {C1}
+  C2 NET043 GNDA {C2}
+  
+  * BIAS CURRENT SOURCE
+  I0 VB1 GNDA {IBIAS}
+  
+  .ends AZC_OTA
+
+testbench_template: |
+  * AZC_OTA Amplifier Testbench
+  .lib {pdk_lib_path} tt
+  
+  {ota_subckt}
+  
+  VDD VDD 0 DC {vdd}
+  VSS VSS 0 DC 0
+  VINP VINP 0 DC {vcm} AC 0.5
+  VINN VINN 0 DC {vcm} AC -0.5
+
+  XDUT VSS VDD VINN VINP VOUT AZC_OTA
+
+  CLOAD VOUT 0 {cload}
+  RLOAD VOUT 0 {rload}
+
+  .control
+  op
+  let vdd_current = abs(i(VDD))
+  let power_dc = vdd_current * {vdd}
+  print power_dc
+
+  ac dec 100 1 10g
+  let gain_db = vdb(VOUT)
+  let dc_gain_db = gain_db[0]
+  print dc_gain_db
+
+  if dc_gain_db > 0
+    meas ac ugbw WHEN gain_db=0 CROSS=1
+  end
+  quit
+  .endc
+  .end

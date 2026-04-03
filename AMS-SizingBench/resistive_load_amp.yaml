@@ -1,0 +1,135 @@
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./resistive_load_amp_test_folder/fom_test_new"
+
+
+user_specs: "Primary goal: Maximize voltage gain and bandwidth while minimizing power consumption and maintaining good output swing for analog signal amplification."
+
+user_specs_metric: "fom > 8.0 AND gain_db > 15 AND bandwidth_mhz > 150 AND power_uw < 150 AND output_swing_v > 0.4"
+
+
+params:
+  vdd: 1.8
+  vbias: 0.6
+  temp: 27
+  c_load: 10e-15   # 10 fF load capacitance
+
+variable:
+  W_input: null
+  L_input: null
+  R_load: null
+
+# Unified value ranges
+W_values: [2, 5, 10, 20, 30, 50]
+L_values: [0.5, 1.0, 2.0, 3.0]
+
+# Variable-specific ranges
+W_input_values: [2, 5, 10, 20, 30, 50]           # 6 values
+L_input_values: [0.5, 1.0, 2.0, 3.0]             # 4 values
+R_load_values: [10e3, 20e3, 50e3, 100e3]         # 4 values (10kΩ to 100kΩ)
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: RESISTIVE_LOAD_AMP
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - gain_db
+  - bandwidth_mhz
+  - power_uw
+  - output_swing_v
+  - fom
+
+base_metrics:
+  gain_db:
+    name: "Voltage Gain"
+    unit: "dB"
+    format: ".2f"
+    degradation_key: "gain_percent"
+  bandwidth_mhz:
+    name: "Bandwidth"
+    unit: "MHz"
+    format: ".2f"
+    degradation_key: "bandwidth_percent"
+  power_uw:
+    name: "Power Consumption"
+    unit: "µW"
+    format: ".3f"
+    degradation_key: "power_percent"
+  output_swing_v:
+    name: "Output Swing"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "swing_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  gain_db:
+    scale: 1
+    decimals: 2
+    unit: "dB"
+  bandwidth_mhz:
+    scale: 1
+    decimals: 2
+    unit: "MHz"
+  power_uw:
+    scale: 1
+    decimals: 3
+    unit: "µW"
+  output_swing_v:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  fom:
+    # FOM = (Gain × Bandwidth × Output_Swing) / Power
+    # Maximize: Gain, bandwidth, output swing
+    # Minimize: Power
+    expr: "(10**(gain_db/20) * bandwidth_mhz * output_swing_v) / max(power_uw, 0.1)"
+    scale: 1
+    decimals: 4
+    unit: ""
+
+circuit_type: "resistive_load_amp"
+
+ota_subckt_template: |
+  * Resistive Load Amplifier
+  * Input transistor (NMOS common-source)
+  XM1 VOUT VIN GND GND sky130_fd_pr__nfet_01v8 l={L_input} w={W_input}
+  
+  * Load resistor
+  RL VDD VOUT {R_load}
+  
+  * Load capacitor
+  CL VOUT GND {c_load}
+  
+  * DC bias + AC signal
+  VIN VIN GND DC {vbias} AC 0.001
+  
+  * Supply
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * Resistive Load Amplifier Testbench
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  set noaskquit
+  op
+  quit
+  .endc
+  
+  .end
