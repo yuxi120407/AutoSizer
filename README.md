@@ -273,13 +273,15 @@ AutoSizer ships with 24 benchmark circuits across six categories, matching AMS-S
 
 **Software**
 
-| Tool | Role |
-|---|---|
-| Python 3.9+ | Runtime |
-| ngspice | SPICE circuit simulation |
-| ALIGN | Automatic analog layout generation |
-| Magic + PEX script | Parasitic extraction from GDS |
-| SKY130 PDK | Device models and layout rules |
+| Tool | Role | Required? |
+|---|---|---|
+| Python 3.9+ | Runtime | Yes |
+| ngspice | SPICE circuit simulation | Yes |
+| SKY130 PDK | Device models and layout rules | Yes |
+| ALIGN | Automatic analog layout generation | Optional |
+| Magic + PEX script | Parasitic extraction from GDS | Optional |
+
+> **Note:** ALIGN and Magic PEX are only needed when running in full layout flow mode (`pre_layout_only=False`). The default mode is pre-layout only, which requires only ngspice and the SKY130 PDK. ALIGN layout support is currently available for a subset of circuits (simple OTAs and amplifiers), not all 24 benchmark circuits.
 
 **Python packages**
 
