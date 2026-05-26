@@ -2431,6 +2431,7 @@ class ControlledOTAOptimizer:
             W_mirr=W_mirr, W_casc_n=W_casc_n, W_casc_p=W_casc_p,
             L=L, R1=R1, R2=R2, C1=C1, C2=C2,
             vdd=vdd, vbn=vbn, vbp=vbp, cload=cload, vcm=vcm, itail=itail,
+            results_dir=str(self.results_dir),
         )
 
         if filter_type == 'hpf':

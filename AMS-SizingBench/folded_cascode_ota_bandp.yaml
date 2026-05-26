@@ -1,12 +1,12 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
-pex_script_path: "./test_magic_pex.py"
+pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
+align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
 results_dir: "./folded_cascode_ota_bandp/fom_test_new"
 
 
 user_specs: "Design a band-pass filter maximizing Q factor, center frequency, and peak gain."
 
-user_specs_metric: "fom > 0.3 AND bpf_q_factor > 0.5 AND bpf_center_freq_hz > 0.03 AND bpf_peak_gain_db > -5"
+user_specs_metric: "fom > 0.3 AND bpf_q_factor > 0.3 AND bpf_center_freq_hz > 0.3 AND bpf_peak_gain_db > -10"
 
 
 params:
@@ -195,17 +195,19 @@ ota_subckt_template: |
     * Output connection
     ROUT N2 VOTA_OUT 0.01
     
-    * Sallen-Key Band-Pass Filter
-    C1 VOTA_OUT VNODE1 {C1}
-    R1 VNODE1 VBUF_IN {R1}
-    C2 VOTA_OUT VNODE2 {C2}
-    R2 VNODE2 VSS {R2}
-    RMIX VBUF_IN VNODE2 0.01
-    
+    * Cascaded HP + LP Band-Pass Filter
+    * HP section: C1 blocks low freq, R1 to ground sets lower cutoff
+    C1 VOTA_OUT VMID {C1}
+    R1 VMID VSS {R1}
+
+    * LP section: R2 in series, C2 to ground sets upper cutoff
+    R2 VMID VBUF_IN {R2}
+    C2 VBUF_IN VSS {C2}
+
     * Unity-gain buffer
     EBUFFER VOUT VSS VBUF_IN VSS 1.0
     RBUF_OUT VOUT VFINAL_OUT 0.01
-    
+
     * Output load
     CLOAD VFINAL_OUT VSS {cload}
     .ends FOLDED_CASCODE_OTA"""

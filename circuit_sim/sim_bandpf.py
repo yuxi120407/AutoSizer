@@ -28,19 +28,25 @@ class OTABPFResult:
 
 def simulate_folder_cascode_ota_with_bpf(pdk_lib_path, W_in, W_fold, W_sink, W_mirr, W_casc_n, W_casc_p,
                                           L, R1, R2, C1, C2,
-                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12, 
-                                          vcm=0.9, itail=10e-6):
+                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12,
+                                          vcm=0.9, itail=10e-6, results_dir='.'):
     """
     Simulate folded-cascode OTA with Sallen-Key BAND-PASS filter
     Returns 4 core filter specs + supporting metrics
     """
     pdk_dir = os.path.dirname(pdk_lib_path)
     
-    fc_theoretical = 1 / (2 * math.pi * math.sqrt(R1 * R2 * C1 * C2))
-    Q_theoretical = math.sqrt(R1 * R2 * C1 * C2) / (R1 * C2)
-    BW_theoretical = fc_theoretical / Q_theoretical if Q_theoretical > 0 else fc_theoretical
-    
-    print(f"Target BPF: fc={fc_theoretical/1e6:.2f} MHz, Q={Q_theoretical:.3f}, BW={BW_theoretical/1e6:.2f} MHz")
+    f_hp = 1 / (2 * math.pi * R1 * C1)
+    f_lp = 1 / (2 * math.pi * R2 * C2)
+    if f_hp < f_lp:
+        fc_theoretical = math.sqrt(f_hp * f_lp)
+        BW_theoretical = f_lp - f_hp
+    else:
+        fc_theoretical = math.sqrt(f_hp * f_lp)
+        BW_theoretical = f_hp - f_lp
+    Q_theoretical = fc_theoretical / BW_theoretical if BW_theoretical > 0 else 0.5
+
+    print(f"Target BPF: f_hp={f_hp:.0f}Hz, f_lp={f_lp:.0f}Hz, fc={fc_theoretical:.0f}Hz, Q={Q_theoretical:.3f}")
 
     ota_netlist = f""".subckt FOLDED_CASCODE_OTA VSS VDD VOUT VINN VINP VBN VBP VTAIL 
 * PMOS differential input pair
@@ -66,12 +72,14 @@ XM10 NP2 VBP VDD VDD sky130_fd_pr__pfet_01v8 w={W_casc_p} l={L}
 * Output connection
 ROUT N2 VOTA_OUT 0.01
 
-* Sallen-Key Band-Pass Filter
-C1 VOTA_OUT VNODE1 {C1}
-R1 VNODE1 VBUF_IN {R1}
-C2 VOTA_OUT VNODE2 {C2}
-R2 VNODE2 VSS {R2}
-RMIX VBUF_IN VNODE2 0.01
+* Cascaded HP + LP Band-Pass Filter
+* HP section: C1 blocks low freq, R1 to ground sets lower cutoff
+C1 VOTA_OUT VMID {C1}
+R1 VMID VSS {R1}
+
+* LP section: R2 in series, C2 to ground sets upper cutoff
+R2 VMID VBUF_IN {R2}
+C2 VBUF_IN VSS {C2}
 
 * Unity-gain buffer
 EBUFFER VOUT VSS VBUF_IN VSS 1.0
@@ -118,13 +126,13 @@ let gain_db_vec = 20*log10(mag(vout_ac))
 let freq_vec = frequency
 
 * Find peak within reasonable range (10Hz to 100MHz)
-* Avoid OTA parasitic resonances at very high frequencies
+* Use real() because AC vectors are complex-typed
 let gain_peak = -1000
 let fc_idx = 0
 let idx = 0
 while idx < length(gain_db_vec)
-  if (freq_vec[idx] > 10) & (freq_vec[idx] < 1e8)
-    if gain_db_vec[idx] > gain_peak
+  if (real(freq_vec[idx]) > 10) & (real(freq_vec[idx]) < 1e8)
+    if real(gain_db_vec[idx]) > real(gain_peak)
       let gain_peak = gain_db_vec[idx]
       let fc_idx = idx
     end
@@ -137,12 +145,12 @@ print fc_center
 echo "PEAK_GAIN_VALUE"
 print gain_peak
 
-* Find -3dB points
+* Find -3dB points (use real() for complex-typed vectors)
 let target = gain_peak - 3
 let f_low = 0
 let idx = 0
 while idx < fc_idx
-  if (gain_db_vec[idx] < target) & (gain_db_vec[idx+1] >= target)
+  if (real(gain_db_vec[idx]) < real(target)) & (real(gain_db_vec[idx+1]) >= real(target))
     let f_low = freq_vec[idx]
     break
   end
@@ -154,7 +162,7 @@ print f_low
 let f_high = 0
 let idx = fc_idx
 while idx < length(gain_db_vec) - 1
-  if (gain_db_vec[idx] >= target) & (gain_db_vec[idx+1] < target)
+  if (real(gain_db_vec[idx]) >= real(target)) & (real(gain_db_vec[idx+1]) < real(target))
     let f_high = freq_vec[idx]
     break
   end
@@ -173,7 +181,7 @@ print q_actual
 let ugbw_hz = 0
 let idx = 0
 while idx < length(gain_db_vec) - 1
-  if (gain_db_vec[idx] > 0) & (gain_db_vec[idx+1] <= 0)
+  if (real(gain_db_vec[idx]) > 0) & (real(gain_db_vec[idx+1]) <= 0)
     let ugbw_hz = freq_vec[idx]
     break
   end
@@ -187,7 +195,7 @@ quit
 .end
 """
 
-    netlist_path = 'folded_cascode_ota_bpf_sim.spice'
+    netlist_path = os.path.join(results_dir, 'folded_cascode_ota_bpf_sim.spice')
     with open(netlist_path, 'w') as f:
         f.write(netlist)
 

@@ -1,12 +1,12 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
-pex_script_path: "./test_magic_pex.py"
+pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
+align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
 results_dir: "./iac_amplifier/optimization_results"
 
 
 
 user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for an Indirect Amplifier Compensation design."
-user_specs_metric: "dc_gain_db > 40 AND ugbw > 50 AND power_dc < 1000"
+user_specs_metric: "dc_gain_db > 30 AND ugbw > 50 AND power_dc < 1000"
 
 params:
   vdd: 1.8

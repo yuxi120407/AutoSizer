@@ -1,3 +1,12 @@
 .env
 .ipynb_checkpoints/
 __pycache__/
+*.pyc
+*.log
+results/
+camera-ready/
+run_bandp_only.sh
+run_azc_only.sh
+run_rerun_3.sh
+run_gemini_2_5_flash_new.sh
+rerun_failed.sh

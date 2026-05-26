@@ -79,6 +79,63 @@ You must provide your analysis in **valid JSON format only**. Your response shou
 Focus your analysis on the OPTIMIZATION VARIABLES and their impact on performance.
 """
 
+TRANSISTOR_GROUPING_PROMPT = """
+You are an expert analog circuit designer. This circuit has {n_vars} per-transistor optimization variables, which is too many to optimize individually. Your task is to GROUP transistors that should share the same sizing parameters based on the circuit topology.
+
+**Circuit Name:** {subckt_name}
+
+**Circuit Netlist:**
+```
+{ota_subckt_template}
+```
+
+**All Per-Transistor Variables ({n_vars} total):**
+{all_variables}
+
+**Available Value Ranges:**
+{value_ranges}
+
+## Grouping Rules:
+1. **Current mirrors** — transistors sharing the same gate signal that form a mirror MUST be in the same group
+2. **Differential pairs** — matched input transistors MUST be in the same group
+3. **Cascode pairs** — stacked transistors in a cascode structure should share sizing
+4. **Same functional role** — transistors performing the same function (e.g., all PMOS bias) should be grouped
+5. **Non-transistor variables** (capacitors, resistors, current sources, loads) should remain as **individual variables** — do NOT group them
+6. **Each group creates 3 shared variables** (W, L, m) — so 5 groups = 15 group variables
+
+## Target: Create 5-12 transistor groups to reduce {n_vars} variables to ~20-40 group variables + individual variables.
+
+## Output Format (JSON only, no other text):
+```json
+{{
+  "grouping_reasoning": "Brief explanation of the grouping strategy (2-3 sentences)",
+  "transistor_groups": {{
+    "<group_name>": {{
+      "transistors": ["m0", "m1", "m2"],
+      "role": "Brief functional role (e.g., PMOS bias current mirror)",
+      "W_range": [<subset of W_values for this group>],
+      "L_range": [<subset of L_values for this group>],
+      "m_range": [<subset of m_values for this group>]
+    }}
+  }},
+  "individual_variables": ["CM1", "CM2", "RM", "IBIAS", "CLOAD", "RLOAD"],
+  "summary": {{
+    "total_original_variables": {n_vars},
+    "num_transistor_groups": "<integer>",
+    "num_group_variables": "<integer: groups * 3>",
+    "num_individual_variables": "<integer>",
+    "total_new_variables": "<integer: group_vars + individual_vars>"
+  }}
+}}
+```
+
+**CRITICAL:**
+- Response must be ONLY valid JSON — no text before or after
+- Every transistor in the netlist must appear in exactly one group
+- Use the transistor names from the netlist (e.g., m0, m1, m65 — without the 'x' prefix)
+- W_range, L_range, m_range must be subsets of the available value ranges
+"""
+
 SEARCH_SPACE_REDUCTION_PROMPT = """
 You are an expert analog circuit optimizer. Based on the circuit understanding analysis, your task is to rank all optimization variables by their impact on the target metric and determine the search space.
 

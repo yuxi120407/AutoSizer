@@ -34,8 +34,8 @@ class OTALPFResult:
 
 def simulate_folder_cascode_ota_with_lpf(pdk_lib_path, W_in, W_fold, W_sink, W_mirr, W_casc_n, W_casc_p,
                                           L, R1, R2, C1, C2,
-                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12, 
-                                          vcm=0.9, Rz=1e3, Cc=1e-12, itail=10e-6):
+                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12,
+                                          vcm=0.9, Rz=1e3, Cc=1e-12, itail=10e-6, results_dir='.'):
     """
     Simulate folded-cascode OTA with Sallen-Key low-pass filter
     """
@@ -208,7 +208,7 @@ quit
 .end
 """
 
-    netlist_path = 'folded_cascode_ota_lpf_sim.spice'
+    netlist_path = os.path.join(results_dir, 'folded_cascode_ota_lpf_sim.spice')
     with open(netlist_path, 'w') as f:
         f.write(netlist)
 

@@ -1,0 +1,190 @@
+pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
+align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
+results_dir: "./ldo_optimization_results/fom_test_new"
+
+GOOGLE_API_KEY: ""
+
+user_specs: "Primary goal: Minimize dropout voltage, line regulation, and load regulation while maximizing PSRR and minimizing quiescent power for a 1.2V output LDO with 10mA load."
+
+user_specs_metric: "fom > 3 AND vout > 1.19 AND vout < 1.21 AND dropout_mv < 650 AND line_reg_mv_per_v < 0.5 AND load_reg_mv_per_ma < 1.0 AND psrr_db > 60 AND power_uw < 20000"
+
+params:
+  vdd: 1.8
+  vref: 0.6
+  vout_target: 1.2
+  iload: 0.01
+  ibias: 1e-5
+  temp: 27
+  temp_min: -40
+  temp_max: 125
+  # Fixed parameters
+  m_pass: 10
+  m_diff: 4
+  m_load: 4
+  L_r1: 156
+  L_r2: 156
+
+variable:
+  W_pass: null
+  L_pass: null
+  W_diff: null
+  W_load: null
+  W_bias: null
+  L_amp: null
+
+# Unified value ranges
+W_values: [5, 10, 20, 30, 40, 60, 80, 100, 200, 300, 500, 700, 1000]
+L_values: [0.5, 1.0, 2.0, 3.0, 4.0]
+
+# Variable-specific ranges
+W_pass_values: [100, 200, 300, 500, 700, 1000]
+L_pass_values: [0.5, 1.0, 2.0]
+W_diff_values: [10, 20, 30, 40, 60, 80]
+W_load_values: [20, 40, 60, 80, 120, 160]
+W_bias_values: [5, 10, 15]
+L_amp_values: [1.0, 2.0, 3.0, 4.0]
+
+width_scales: {}
+length_scales: {}
+
+subckt_name: LDO_REGULATOR
+subckt_pins: [VDD, GND]
+I_O_pins: [VDD, GND]
+testbench_signals:
+  VDD: VDD
+  GND: GND
+
+metrics:
+  - vout
+  - dropout_mv
+  - line_reg_mv_per_v
+  - load_reg_mv_per_ma
+  - psrr_db
+  - power_uw
+  - fom
+
+base_metrics:
+  vout:
+    name: "Output Voltage"
+    unit: "V"
+    format: ".4f"
+    degradation_key: "vout_percent"
+  dropout_mv:
+    name: "Dropout Voltage"
+    unit: "mV"
+    format: ".1f"
+    degradation_key: "dropout_percent"
+  line_reg_mv_per_v:
+    name: "Line Regulation"
+    unit: "mV/V"
+    format: ".2f"
+    degradation_key: "line_reg_percent"
+  load_reg_mv_per_ma:
+    name: "Load Regulation"
+    unit: "mV/mA"
+    format: ".3f"
+    degradation_key: "load_reg_percent"
+  psrr_db:
+    name: "PSRR"
+    unit: "dB"
+    format: ".1f"
+    degradation_key: "psrr_percent"
+  power_uw:
+    name: "Quiescent Power"
+    unit: "µW"
+    format: ".1f"
+    degradation_key: "power_percent"
+  fom:
+    name: "FOM"
+    unit: ""
+    format: ".4f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  vout:
+    scale: 1
+    decimals: 4
+    unit: "V"
+  dropout_mv:
+    scale: 1
+    decimals: 1
+    unit: "mV"
+  line_reg_mv_per_v:
+    scale: 1
+    decimals: 2
+    unit: "mV/V"
+  load_reg_mv_per_ma:
+    scale: 1000
+    decimals: 3
+    unit: "µV/mA"
+  psrr_db:
+    scale: 1
+    decimals: 1
+    unit: "dB"
+  power_uw:
+    scale: 1
+    decimals: 1
+    unit: "µW"
+  fom:
+    # FOM = (PSRR × Iload_max) / (Dropout × Line_Reg × Load_Reg × Power)
+    # load_reg_mv_per_ma is now in µV/mA (scale=1000)
+    expr: "(abs(psrr_db) * 10) / (max(dropout_mv, 1) * max(line_reg_mv_per_v, 0.01) * max(load_reg_mv_per_ma, 0.1) * max(power_uw, 1))"
+    scale: 1
+    decimals: 4
+    unit: ""
+
+circuit_type: "ldo_regulator"
+
+ota_subckt_template: |
+  * LDO Voltage Regulator
+  * Pass Transistor
+  XMPASS VOUT VGATE VDD_INTERNAL VDD sky130_fd_pr__pfet_01v8 l={L_pass} w={W_pass} m={m_pass}
+  
+  * Error Amplifier - Differential Pair
+  XM1 VD1 VREF VTAIL GND sky130_fd_pr__nfet_01v8 l={L_amp} w={W_diff} m={m_diff}
+  XM2 VD2 VFB VTAIL GND sky130_fd_pr__nfet_01v8 l={L_amp} w={W_diff} m={m_diff}
+  XMTAIL VTAIL VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_amp}*2}} w={W_bias} m=4
+  
+  * Error Amplifier - Active Load
+  XM3 VD1 VD1 VDD_INTERNAL VDD sky130_fd_pr__pfet_01v8 l={L_amp} w={W_load} m={m_load}
+  XM4 VD2 VD1 VDD_INTERNAL VDD sky130_fd_pr__pfet_01v8 l={L_amp} w={W_load} m={m_load}
+  
+  * Output Driver
+  XM5 VGATE VD2 VDD_INTERNAL VDD sky130_fd_pr__pfet_01v8 l={L_amp} w={{{W_load}*4}} m={m_load}
+  XM6 VGATE VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_amp}*2}} w={{{W_bias}*2}} m=2
+  
+  * Compensation
+  CC VGATE VOUT 5p
+  
+  * Feedback Network
+  XR1 VOUT VFB VDD sky130_fd_pr__res_high_po_1p41 w=1.41 l={L_r1}
+  XR2 VFB GND VDD sky130_fd_pr__res_high_po_1p41 w=1.41 l={L_r2}
+  
+  * Bias Circuit
+  XMBIAS VBIAS VBIAS GND GND sky130_fd_pr__nfet_01v8 l={{{L_amp}*4}} w={W_bias} m=1
+  RBIAS VDD_INTERNAL VBIAS {{{vdd}/{ibias}/10}}
+  
+  * Load
+  ILOAD VOUT GND DC {iload}
+  CLOAD VOUT GND 100p
+  
+  * Supply and Reference
+  VREF VREF GND DC {vref}
+  VDD VDD GND DC {vdd}
+
+testbench_template: |
+  * LDO Regulator
+  .lib {pdk_lib_path} tt
+  .global VDD GND
+  .temp {temp}
+  
+  {ota_subckt}
+  
+  .control
+  set noaskquit
+  op
+  quit
+  .endc
+  
+  .end

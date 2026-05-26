@@ -1,11 +1,11 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
-pex_script_path: "./test_magic_pex.py"
+pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
+align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
 results_dir: "./switched_capacitor_optimization_test_folder/fom_test_new"
 
 user_specs: "Primary goal: Maximize gain and UGBW while minimizing THD and power consumption, maintaining good phase margin for stable switched-capacitor operation."
 
-user_specs_metric: "fom > 1.0 AND gain_db > 15 AND thd_db < -25 AND power_uw < 1500 AND phase_margin_deg > 50 AND ugbw_mhz > 5"
+user_specs_metric: "fom > 1.0 AND gain_db > 15 AND thd_db < -25 AND power_uw < 1500 AND phase_margin_deg > 50 AND ugbw_mhz > 100"
 
 params:
   vdd: 1.8

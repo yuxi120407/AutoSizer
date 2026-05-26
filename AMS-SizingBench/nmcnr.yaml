@@ -1,8 +1,9 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
-pex_script_path: "./test_magic_pex.py"
+pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
+align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
 results_dir: "./nmcnr_amplifier/optimization_results"
 
+GOOGLE_API_KEY: ""
 
 user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a Nested Miller Compensation with Nulling Resistor amplifier."
 user_specs_metric: "dc_gain_db > 18 AND ugbw > 10 AND power_dc < 600"

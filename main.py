@@ -2,6 +2,7 @@ import os
 import sys
 import yaml
 import json
+import csv
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -163,14 +164,26 @@ def main():
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Output directory for summary JSON (e.g. ./results/gemini-2.5-flash)')
     parser.add_argument('--circuits', type=str, nargs='+', required=True,
-                        help='Circuits as name:yaml_path pairs (e.g. five_trans_ota:./AMS-SizingBench/five_trans_ota.yaml)')
+                        help='"all" to run every yaml in AMS-SizingBench/, '
+                             'or name:path pairs, or bare .yaml paths')
     args = parser.parse_args()
 
     # Build CIRCUIT_REGISTRY from --circuits argument
+    BENCH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AMS-SizingBench")
     CIRCUIT_REGISTRY = {}
-    for entry in args.circuits:
-        name, path = entry.split(':', 1)
-        CIRCUIT_REGISTRY[name] = {"config_path": path}
+    if len(args.circuits) == 1 and args.circuits[0].lower() == 'all':
+        for f in sorted(os.listdir(BENCH_DIR)):
+            if f.endswith('.yaml'):
+                name = f.replace('.yaml', '')
+                CIRCUIT_REGISTRY[name] = {"config_path": os.path.join(BENCH_DIR, f)}
+    else:
+        for entry in args.circuits:
+            if ':' in entry:
+                name, path = entry.split(':', 1)
+            else:
+                path = entry
+                name = Path(path).stem
+            CIRCUIT_REGISTRY[name] = {"config_path": path}
 
     # ========================================================================
     # GLOBAL CONFIGURATION
@@ -444,6 +457,102 @@ def main():
 
     print(f"{'='*table_width}\n")
     print(f" ALL CIRCUITS COMPLETED\n")
+
+    # ========================================================================
+    # EXPORT TO CSV
+    # ========================================================================
+
+    # Circuit type classification
+    def classify_circuit(name):
+        """Classify circuit by type for grouping"""
+        name_lower = name.lower()
+        if 'ota' in name_lower or 'amplifier' in name_lower or 'amp' in name_lower:
+            return 'Amplifier'
+        elif 'bandgap' in name_lower or 'reference' in name_lower:
+            return 'Reference'
+        elif 'ldo' in name_lower or 'regulator' in name_lower:
+            return 'Regulator'
+        elif 'osc' in name_lower or 'vco' in name_lower:
+            return 'Oscillator'
+        elif 'gate' in name_lower or 'inverter' in name_lower or 'buffer' in name_lower:
+            return 'Digital/Logic'
+        elif 'capacitor' in name_lower or 'filter' in name_lower:
+            return 'Analog Block'
+        else:
+            return 'Other'
+
+    csv_file = os.path.join(output_dir, "benchmark_results.csv")
+
+    # Sort circuits by type then name
+    sorted_circuits = sorted(
+        [(name, result) for name, result in all_circuit_results.items()],
+        key=lambda x: (classify_circuit(x[0]), x[0])
+    )
+
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+
+        # Build header: Circuit, Type, FOM_avg, FOM_std, then all metrics, then tokens/evals/SR
+        header = ['Circuit', 'Type', 'FOM_avg', 'FOM_std']
+
+        # Add all metric columns (avg and std pairs)
+        for metric_name in sorted(all_metric_keys):
+            header.extend([f'{metric_name}_avg', f'{metric_name}_std'])
+
+        header.extend(['Input_Tokens', 'Output_Tokens', 'Total_Tokens',
+                       'Evals_avg', 'Evals_std', 'Time_avg_s', 'Time_std_s', 'Success_Rate_%'])
+
+        writer.writerow(header)
+
+        # Write data rows grouped by type
+        current_type = None
+        for circuit_name, result in sorted_circuits:
+            circuit_type = classify_circuit(circuit_name)
+
+            # Add a blank row when type changes (for readability)
+            if current_type is not None and circuit_type != current_type:
+                writer.writerow([])
+            current_type = circuit_type
+
+            if result['status'] == 'SUCCESS' and 'metrics' in result:
+                m = result['metrics']
+
+                row = [
+                    circuit_name,
+                    circuit_type,
+                    f"{m['avg_best_fom']:.4f}",
+                    f"{m['std_best_fom']:.4f}"
+                ]
+
+                # Add all metric values
+                for metric_name in sorted(all_metric_keys):
+                    avg_key = f'avg_{metric_name}'
+                    std_key = f'std_{metric_name}'
+                    if avg_key in m and std_key in m:
+                        row.extend([f"{m[avg_key]:.6e}", f"{m[std_key]:.6e}"])
+                    else:
+                        row.extend(['N/A', 'N/A'])
+
+                # Add token usage
+                row.extend([
+                    f"{m.get('avg_input_tokens', 0):.0f}",
+                    f"{m.get('avg_output_tokens', 0):.0f}",
+                    f"{m.get('avg_total_tokens', 0):.0f}",
+                    f"{m['avg_evals_to_best']:.1f}",
+                    f"{m['std_evals_to_best']:.1f}",
+                    f"{m['avg_time_seconds']:.1f}",
+                    f"{m['std_time_seconds']:.1f}",
+                    f"{m['success_rate_percent']:.1f}"
+                ])
+
+                writer.writerow(row)
+            else:
+                # Failed circuit
+                status = result.get('status', 'UNKNOWN')
+                row = [circuit_name, circuit_type, 'FAILED', status]
+                writer.writerow(row)
+
+    print(f"✓ Results exported to CSV: {csv_file}\n")
 
 if __name__ == "__main__":
     main()

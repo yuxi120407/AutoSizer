@@ -31,8 +31,8 @@ class OTAHPFResult:
 
 def simulate_folder_cascode_ota_with_hpf(pdk_lib_path, W_in, W_fold, W_sink, W_mirr, W_casc_n, W_casc_p,
                                           L, R1, R2, C1, C2,
-                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12, 
-                                          vcm=0.9, itail=10e-6):
+                                          vdd=1.8, vbn=0.6, vbp=0.6, cload=1e-12,
+                                          vcm=0.9, itail=10e-6, results_dir='.'):
     """
     Simulate folded-cascode OTA with Sallen-Key HIGH-PASS filter
     Returns 4 core filter specs + supporting metrics
@@ -187,7 +187,7 @@ quit
 .end
 """
 
-    netlist_path ='folded_cascode_ota_hpf_sim.spice'
+    netlist_path = os.path.join(results_dir, 'folded_cascode_ota_hpf_sim.spice')
     with open(netlist_path, 'w') as f:
         f.write(netlist)
 

@@ -74,10 +74,14 @@ def parse_llm_json_response(llm_response):
     # 3. Fix common issues with rationale/explanation fields
     # Replace newlines in string values with spaces
     text = re.sub(r'"\s*\n\s*', '" ', text)
-    
-    # 4. Try to fix unescaped quotes in strings (naive approach)
-    # This is tricky - skip for now
-    
+
+    # 4. Fix missing commas between objects: } "key" → }, "key"
+    text = re.sub(r'\}\s*"', '}, "', text)
+    text = re.sub(r'\}\s*\n\s*"', '},\n"', text)
+
+    # 5. Fix missing commas between array elements: ] [ → ], [
+    text = re.sub(r'\]\s*\[', '], [', text)
+
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
@@ -253,7 +257,7 @@ class LLMOptimizationAgent:
                 "temperature": 0.4,  # Slightly higher for more creative strategies 0.1
                 "top_p": 0.85,
                 "top_k": 20,
-                "max_output_tokens": 8192, #16384
+                "max_output_tokens": 65536,  # Max for gemini-2.5-flash
             }
 
             self.model = genai.GenerativeModel(
@@ -264,7 +268,7 @@ class LLMOptimizationAgent:
             # For OpenAI-compatible models, store config separately
             self.generation_config = {
                 "temperature": 0.4,
-                "max_tokens": 8192,
+                "max_tokens": 16384,  # Increased for longer responses
             }
             self.model = None  # OpenAI-compatible models don't use GenerativeModel
 
