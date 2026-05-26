@@ -1,9 +1,8 @@
-pdk_lib_path: "/home/idies/workspace/Temporary/xyu1/scratch/skywater-pdk-libs-sky130_fd_pr/combined_models/sky130.lib.spice"
-align_pdk_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-pdk-sky130/SKY130_PDK/"
-pex_script_path: "/home/idies/workspace/Storage/xyu1/persistent/ALIGN-public/simple_circuit_5/OpenManus/test_magic_pex.py"
+pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
 results_dir: "./ldo_optimization_results/fom_test_new"
 
-GOOGLE_API_KEY: ""
 
 user_specs: "Primary goal: Minimize dropout voltage, line regulation, and load regulation while maximizing PSRR and minimizing quiescent power for a 1.2V output LDO with 10mA load."
 
