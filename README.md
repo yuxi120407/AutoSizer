@@ -35,37 +35,45 @@ AutoSizer is a reflective, LLM-driven meta-optimization framework for automated 
 ## Repository Structure
 
 ```
-autosizer/
+AutoSizer/
 │
 ├── main.py                                  # Entry point: multi-circuit, multi-trial runner
-├── llm_guided_ota_optimization.py           # LLM agent + outer-loop orchestration
-├── iterative_ota_optimization.py            # Optimizer core: simulation, layout, search dispatch
-├── advanced_search_methods.py               # All optimization algorithms
+├── llm_guided_ota_optimization_test.py      # LLM agent + outer-loop orchestration
+├── iterative_ota_optimization_test.py       # Optimizer core: simulation, layout, search dispatch
+├── advanced_search_methods_test.py          # All optimization algorithms
 │
 ├── prompts.py                               # Algorithm-orchestration prompt templates
-├── problem_agent.py                         # Circuit-understanding & search-space prompts
+├── problem_agent_test.py                    # Circuit-understanding & search-space prompts
+├── test_magic_pex.py                        # Magic PEX parasitic extraction script
+├── generate_csv.py                          # Generate benchmark CSV from results
+├── run_all_gemini_2_5.sh                    # Run full benchmark suite
+├── requirements.txt                         # Python dependencies
+│
 ├── utils/
 │   └── feedback_extraction.py               # Parses optimization history into LLM feedback
 │
 ├── circuit_sim/                             # Per-circuit simulation helpers
-│   ├── vco_characterization.py
-│   ├── switched_capacitor_sim.py
 │   ├── bandgap_reference_sim.py
+│   ├── diode_load_amp_sim.py
 │   ├── ldo_regulator_sim.py
 │   ├── nand_gate_sim.py
-│   ├── xor_gate_sim.py
 │   ├── resistive_load_amp_sim.py
-│   ├── diode_load_amp_sim.py
 │   ├── ring_osc_sim.py
+│   ├── switched_capacitor_sim.py
+│   ├── vco_characterization.py
+│   ├── xor_gate_sim.py
 │   ├── sim_lpf.py
 │   ├── sim_hpf.py
 │   └── sim_bandpf.py
 │
-├── circuits_yaml/                           # YAML configs for every benchmark circuit
+├── AMS-SizingBench/                         # YAML configs for all 24 benchmark circuits
 │   ├── telescopic_ota.yaml
 │   ├── folded_cascode_ota.yaml
 │   ├── five_trans_ota.yaml
 │   ├── current_mirror_ota.yaml
+│   ├── folded_cascode_ota_lp.yaml
+│   ├── folded_cascode_ota_hp.yaml
+│   ├── folded_cascode_ota_bandp.yaml
 │   ├── azc.yaml
 │   ├── dfcfc.yaml
 │   ├── fdgb.yaml
@@ -82,10 +90,9 @@ autosizer/
 │   ├── nand_gate.yaml
 │   ├── xor_gate.yaml
 │   ├── resistive_load_amp.yaml
-│   ├── diode_load_amp.yaml
-│   └── ...
+│   └── diode_load_amp.yaml
 │
-└── results/                                 # Generated at runtime (see Output Files)
+└── results/                                 # Generated at runtime
 ```
 
 ---
@@ -131,7 +138,7 @@ When running in full-flow mode (`pre_layout_only=False`), the best pre-layout de
 
 ### LLMOptimizationAgent
 
-Defined in `llm_guided_ota_optimization.py`. This class owns every interaction with the Gemini API.
+Defined in `llm_guided_ota_optimization_test.py`. This class owns every interaction with the Gemini API.
 
 | Method | Purpose |
 |---|---|
@@ -143,7 +150,7 @@ Defined in `llm_guided_ota_optimization.py`. This class owns every interaction w
 
 ### ControlledOTAOptimizer
 
-Defined in `iterative_ota_optimization.py`. Manages one complete optimization run for a single circuit.
+Defined in `iterative_ota_optimization_test.py`. Manages one complete optimization run for a single circuit.
 
 | Method | Purpose |
 |---|---|
@@ -161,7 +168,7 @@ Defined in `iterative_ota_optimization.py`. Manages one complete optimization ru
 
 ### AdvancedSearchMethods
 
-Defined in `advanced_search_methods.py`. All algorithms operate natively on the discrete, per-variable search space produced by the LLM. Fixed variables are automatically injected; only the optimizable subset is varied.
+Defined in `advanced_search_methods_test.py`. All algorithms operate natively on the discrete, per-variable search space produced by the LLM. Fixed variables are automatically injected; only the optimizable subset is varied.
 
 | Algorithm | Key Use Case |
 |---|---|
@@ -182,7 +189,7 @@ The top-level dispatcher `enhanced_generate_search_points()` routes the LLM's me
 Every circuit in the benchmark is fully described by a single YAML file. The file supplies everything the framework needs without any hard-coded circuit logic in the Python layer.
 
 ```yaml
-# circuits_yaml/telescopic_ota.yaml  (abbreviated)
+# AMS-SizingBench/telescopic_ota.yaml  (abbreviated)
 
 pdk_lib_path:   ".../sky130.lib.spice"
 align_pdk_path: ".../ALIGN-pdk-sky130/SKY130_PDK/"
@@ -294,8 +301,8 @@ A Google Gemini API key is required. Set it in the environment or add a `GOOGLE_
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-org>/autosizer.git
-cd autosizer
+git clone https://github.com/yuxi120407/AutoSizer.git
+cd AutoSizer
 
 # 2. Create and activate a conda environment (recommended)
 conda create -n autosizer python=3.10 -y
@@ -307,7 +314,7 @@ pip install google-generativeai numpy scipy scikit-optimize pyyaml
 # 4. Set your Gemini API key
 export GOOGLE_API_KEY="your-api-key-here"
 
-# 5. Point paths in circuits_yaml/*.yaml to your local PDK and tool installations
+# 5. Point paths in AMS-SizingBench/*.yaml to your local PDK and tool installations
 #    (pdk_lib_path, align_pdk_path, pex_script_path)
 ```
 
@@ -317,25 +324,23 @@ export GOOGLE_API_KEY="your-api-key-here"
 
 ### Running a Single Circuit
 
-Edit `main.py` and uncomment exactly one circuit in `CIRCUIT_REGISTRY`:
-
-```python
-CIRCUIT_REGISTRY = {
-    "telescopic_ota": {
-        "config_path": "./circuits_yaml/telescopic_ota.yaml"
-    }
-}
-```
-
-Then run:
-
 ```bash
-python main.py
+python main.py \
+    --model gemini-2.5-flash \
+    --output-dir ./results/my_test \
+    --circuits telescopic_ota:AMS-SizingBench/telescopic_ota.yaml
 ```
 
 ### Running the Full Benchmark Suite
 
-Uncomment all 24 circuits in `CIRCUIT_REGISTRY`. AutoSizer will run them sequentially, writing a rolling `all_circuits_llm_agent_summary.json` so that interrupted runs can be resumed (completed circuits are skipped automatically).
+```bash
+python main.py \
+    --model gemini-2.5-flash \
+    --output-dir ./results/gemini-2.5-flash \
+    --circuits all
+```
+
+AutoSizer will run all 24 circuits sequentially, writing a rolling `all_circuits_llm_agent_summary.json` so that interrupted runs can be resumed (completed circuits are skipped automatically).
 
 ### Configuration Parameters
 
